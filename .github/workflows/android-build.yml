@@ -18,12 +18,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
 
-      - uses: android-actions/setup-android@v3
+      # The runner already ships the Android SDK; just accept licenses so Gradle can fetch platforms.
+      - name: Accept Android SDK licenses
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
 
       # The project zip has no Gradle wrapper. Use it if you committed one, otherwise install Gradle.
       # AGP 9.x needs Gradle 9.x - bump the version below if the build says it needs a newer one.
