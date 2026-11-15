@@ -1,0 +1,6 @@
+{
+  "name": "AutoResume",
+  "description": "Your Career, Beautifully Presented. An elegant AI-powered resume builder, ATS score analyzer, and portfolio webpage generator.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

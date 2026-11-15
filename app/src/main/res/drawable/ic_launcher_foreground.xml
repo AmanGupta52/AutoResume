@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    
+    <!-- White Circle background (safe area centered) -->
+    <path
+        android:pathData="M54,18 A36,36 0 1,0 54,90 A36,36 0 1,0 54,18"
+        android:fillColor="#FFFFFF" />
+
+    <!-- CV Document Shape in the center -->
+    <path
+        android:pathData="M38,30 M42,30 h18 l12,12 v30 c0,3.3 -2.7,6 -6,6 H38c-3.3,0 -6,-2.7 -6,-6 V36C32,32.7 34.7,30 38,30"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeColor="#7B1FA2"
+        android:fillColor="#00000000" />
+        
+    <!-- Document Fold corner -->
+    <path
+        android:pathData="M60,30 v12 h12"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeColor="#7B1FA2"
+        android:fillColor="#00000000" />
+
+    <!-- "CV" Title text graphic as clean lines -->
+    <path
+        android:pathData="M38,44 h6 M38,48 h6 M38,52 h10"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:strokeColor="#7B1FA2" />
+
+    <!-- Avatar shape inside document (head and shoulders) -->
+    <path
+        android:pathData="M56,38 A3.5,3.5 0 1,0 56,45 A3.5,3.5 0 1,0 56,38"
+        android:fillColor="#7B1FA2" />
+    <path
+        android:pathData="M49,53 c0,-2.5 2,-4.5 5,-4.5 h4 c3,0 5,2 5,4.5 L63,55 H49 Z"
+        android:fillColor="#7B1FA2" />
+
+    <!-- Mini chart in document bottom left depicting analytics trend -->
+    <path
+        android:pathData="M38,72 v-12 h14"
+        android:strokeWidth="1.5"
+        android:strokeColor="#7B1FA2"
+        android:fillColor="#00000000" />
+    <path
+        android:pathData="M38,70 l4,-6 l5,4 l5,-5"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeColor="#7B1FA2"
+        android:fillColor="#00000000" />
+
+    <!-- Small pencil pointing in from bottom-right (bold and active representation) -->
+    <path
+        android:pathData="M68,54 L52,70 L48,74 L52,72 L56,68 Z"
+        android:strokeWidth="1.8"
+        android:strokeLineJoin="round"
+        android:strokeColor="#FF9500"
+        android:fillColor="#FF9500" />
+</vector>

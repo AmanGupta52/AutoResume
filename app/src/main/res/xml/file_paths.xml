@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Exposes the cache directory for sharing PDFs securely -->
+    <cache-path name="resume_cache" path="." />
+    <!-- Exposes external storage files as well to cover potential exports -->
+    <external-files-path name="resume_downloads" path="." />
+</paths>

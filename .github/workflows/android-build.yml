@@ -1,0 +1,72 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main, master]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write   # needed to attach the APK to a GitHub Release
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      HAS_KEYSTORE: ${{ secrets.KEYSTORE_BASE64 != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: android-actions/setup-android@v3
+
+      # The project zip has no Gradle wrapper. Use it if you committed one, otherwise install Gradle.
+      # AGP 9.x needs Gradle 9.x - bump the version below if the build says it needs a newer one.
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: ${{ hashFiles('gradlew') != '' && 'wrapper' || '9.3.1' }}
+
+      - name: Create .env (Gemini key)
+        run: |
+          if [ -n "${{ secrets.GEMINI_API_KEY }}" ]; then
+            echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" > .env
+          else
+            cp .env.example .env
+          fi
+
+      - name: Create debug keystore
+        run: |
+          keytool -genkeypair -v -keystore debug.keystore -storepass android -keypass android \
+            -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=Android Debug,O=Android,C=US"
+
+      - name: Build debug APK
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: Build signed release APK (only if signing secrets exist)
+        if: ${{ env.HAS_KEYSTORE == 'true' }}
+        env:
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          KEYSTORE_PATH: ${{ github.workspace }}/my-upload-key.jks
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > my-upload-key.jks
+          gradle assembleRelease --no-daemon
+
+      - name: Upload APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: AutoResume-apk
+          path: app/build/outputs/apk/**/*.apk
+
+      - name: Attach APKs to GitHub Release (tags like v1.0)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: app/build/outputs/apk/**/*.apk
