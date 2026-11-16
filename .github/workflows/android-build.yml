@@ -18,6 +18,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Safety net: delete files from the old UI that clash with the rebuilt one.
+      # (Remove this step once you have deleted them from the repository.)
+      - name: Remove stale old-UI files
+        run: |
+          cd app/src/main/java/com/example/ui
+          rm -f AtsAnalyzerScreen.kt AutoResumeScreens.kt AutoResumeMainScreens.kt \
+                AutoResumeSecondaryFlows.kt AutoResumeEditorWorkspace.kt \
+                WorkAndEducationEditorScreen.kt Neu.kt MainViewModel.kt theme/AppTheme.kt
+          rm -rf locale
+
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -47,6 +57,18 @@ jobs:
           keytool -genkeypair -v -keystore debug.keystore -storepass android -keypass android \
             -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 \
             -dname "CN=Android Debug,O=Android,C=US"
+
+      - name: Run unit tests
+        run: gradle testDebugUnitTest --no-daemon
+        continue-on-error: true   # a failing test is reported but never blocks the APK
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-report
+          path: app/build/reports/tests/
+          if-no-files-found: ignore
 
       - name: Build debug APK
         run: gradle assembleDebug --no-daemon --stacktrace

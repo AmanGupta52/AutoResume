@@ -17,3 +17,13 @@ Room database (`data/`), resume HTML/PDF renderer, ATS engine, Gemini client. Ex
 ## Removed
 Fake login/register/OTP/forgot-password screens, fake notifications, Neumorphism hack layer, localisation shim.
 Add real accounts only when there is a backend.
+
+## Round 3 - features
+Tailor to a job, cover letters (AI or offline draft, PDF), Word export, LinkedIn zip import, writing check, 5 new templates,
+font choice, section reordering, tighter spacing, fit-to-1-page with page counter, real thumbnails, onboarding,
+swipeable editor tabs with completion ticks, undo after delete, illustrated empty states, haptics, Hindi interface,
+HTML escaping of all user text, unit tests in CI, new app icon, signed-release instructions.
+
+Not included: importing text from a PDF resume. Android cannot read PDF text without an extra library and OCR; the LinkedIn zip
+import covers the "do not retype" case without new dependencies. Design extras (font, order, spacing) are stored inside the
+existing `fontSize` column, so there is no database migration and existing resumes keep working.

@@ -161,4 +161,24 @@ object GeminiClient {
             "Collaboration, Technical Documentation, Code Quality, Cloud Deployments"
         }
     }
+
+    // Cover letter. Returns null when the key is missing or the request fails (caller falls back to an offline draft).
+    suspend fun generateCoverLetter(
+        resumeText: String, jobDescription: String, role: String, company: String, manager: String, tone: String,
+    ): String? = withContext(Dispatchers.IO) {
+        val apiKey = getApiKey()
+        if (apiKey.isEmpty()) return@withContext null
+        val prompt = "Write a cover letter for the role '$role' at '${company.ifBlank { "the company" }}', addressed to '${manager.ifBlank { "Hiring Manager" }}'. " +
+            "Tone: $tone. Length: 220-300 words, 3 short paragraphs plus sign-off.\n\nRESUME:\n$resumeText\n\nJOB DESCRIPTION:\n$jobDescription"
+        val request = GenerateContentRequest(
+            contents = listOf(Content(parts = listOf(Part(text = prompt)))),
+            systemInstruction = Content(parts = listOf(Part(text = "You write honest, specific cover letters. Use ONLY facts that appear in the resume; never invent employers, numbers or skills. Plain text, no markdown, no placeholders in brackets. Return only the letter."))),
+        )
+        try {
+            val response = service.generateContent(apiKey, request)
+            response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text?.trim()
+        } catch (e: Exception) {
+            null
+        }
+    }
 }

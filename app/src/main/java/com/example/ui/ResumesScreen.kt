@@ -2,7 +2,13 @@
 
 package com.example.ui
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -24,6 +30,7 @@ fun ResumesScreen(vm: ResumeViewModel) {
     var showNew by remember { mutableStateOf(false) }
     var toDelete by remember { mutableStateOf<Resume?>(null) }
     var toRename by remember { mutableStateOf<Resume?>(null) }
+    val importer = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri -> uri?.let { vm.importLinkedIn(it) } }
 
     Box(Modifier.fillMaxSize()) {
         LazyColumn(
@@ -38,11 +45,20 @@ fun ResumesScreen(vm: ResumeViewModel) {
                         if (resumes.isEmpty()) "Create your first resume in a minute." else "${resumes.size} saved on this device",
                         style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    TextButton(onClick = { importer.launch("*/*") }) {
+                        Icon(Icons.Filled.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Import from LinkedIn (.zip)")
+                    }
                 }
             }
             if (resumes.isEmpty()) {
                 item {
-                    EmptyState("Nothing here yet", "Start from a blank page or fill an example to see how the templates look.")
+                    EmptyState(
+                        "Nothing here yet",
+                        "Start from a blank page, fill an example to see the templates, or import your LinkedIn data.",
+                        action = { Button(onClick = { showNew = true }, shape = MaterialTheme.shapes.small) { Text("Create a resume") } },
+                    )
                 }
             }
             items(resumes, key = { it.id }) { r ->
@@ -118,11 +134,12 @@ private fun ResumeCard(r: Resume, onOpen: () -> Unit, onDuplicate: () -> Unit, o
     var menu by remember { mutableStateOf(false) }
     SoftCard(Modifier.fillMaxWidth(), onClick = onOpen) {
         Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            TemplateThumb(
-                ResumeHtmlHelper.normalizeTemplate(r.templateId),
-                ResumeAccents.of(r.colorSchemeId),
-                Modifier.size(width = 58.dp, height = 78.dp),
-            )
+            val context = LocalContext.current
+            val thumbHtml = remember(r) { ResumeHtmlHelper.generateHtml(context, r, thumbnail = true) }
+            val thumbShape = RoundedCornerShape(6.dp)
+            Box(Modifier.size(width = 58.dp, height = 82.dp).clip(thumbShape).border(1.dp, MaterialTheme.colorScheme.outlineVariant, thumbShape)) {
+                ResumeMiniPreview(thumbHtml, Modifier.fillMaxSize())
+            }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(r.name.ifBlank { "Untitled resume" }, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(

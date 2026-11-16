@@ -11,48 +11,50 @@ import com.example.data.Resume
 import java.io.File
 
 /**
- * PDF export now uses the SAME HTML document as the on-screen preview (ResumeHtmlHelper),
- * so preview, template and exported PDF can no longer drift apart. The old hand-drawn
- * Canvas renderer (a second, different layout engine) has been removed.
+ * PDF export uses the SAME HTML as the on-screen preview (ResumeHtmlHelper), so preview, template
+ * and exported PDF cannot drift apart. [exportHtml] is also used for cover letters.
  */
 object ResumePdfHelper {
 
-    /** Renders the resume HTML off-screen and writes a real A4 PDF file. Callback runs on the main thread. */
     fun exportPdf(context: Context, resume: Resume, dark: Boolean = false, onDone: (File?) -> Unit) {
+        val safe = resume.fullName.ifBlank { "Resume" }.replace(Regex("[^A-Za-z0-9_-]+"), "_")
         Handler(Looper.getMainLooper()).post {
-            try {
-                val dir = File(context.cacheDir, "pdf").apply { mkdirs() }
-                val safeName = resume.fullName.ifBlank { "Resume" }.replace(Regex("[^A-Za-z0-9_-]+"), "_")
-                val file = File(dir, "${safeName}_Resume.pdf")
-                val webView = WebView(context.applicationContext)
-                webView.settings.javaScriptEnabled = false
-                webView.settings.allowFileAccess = false
-                var finished = false
-                webView.webViewClient = object : WebViewClient() {
-                    override fun onPageFinished(view: WebView?, url: String?) {
-                        if (finished) return
-                        finished = true
-                        // give images/fonts a moment to lay out before snapshotting
-                        Handler(Looper.getMainLooper()).postDelayed({
-                            val attrs = PrintAttributes.Builder()
-                                .setMediaSize(PrintAttributes.MediaSize.ISO_A4)
-                                .setResolution(PrintAttributes.Resolution("pdf", "pdf", 300, 300))
-                                .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
-                                .build()
-                            val adapter = webView.createPrintDocumentAdapter(file.nameWithoutExtension)
-                            PdfPrint(attrs).print(adapter, file) { ok ->
-                                Handler(Looper.getMainLooper()).post {
-                                    webView.destroy()
-                                    onDone(if (ok && file.length() > 0) file else null)
-                                }
+            exportHtml(context, ResumeHtmlHelper.generateHtml(context, resume, dark), "${safe}_Resume", onDone)
+        }
+    }
+
+    /** Renders HTML off-screen and writes an A4 PDF. Must be called on the main thread; callback runs on main. */
+    fun exportHtml(context: Context, html: String, baseName: String, onDone: (File?) -> Unit) {
+        try {
+            val dir = File(context.cacheDir, "pdf").apply { mkdirs() }
+            val file = File(dir, "$baseName.pdf")
+            val webView = WebView(context.applicationContext)
+            webView.settings.javaScriptEnabled = false
+            webView.settings.allowFileAccess = false
+            var finished = false
+            webView.webViewClient = object : WebViewClient() {
+                override fun onPageFinished(view: WebView?, url: String?) {
+                    if (finished) return
+                    finished = true
+                    Handler(Looper.getMainLooper()).postDelayed({
+                        val attrs = PrintAttributes.Builder()
+                            .setMediaSize(PrintAttributes.MediaSize.ISO_A4)
+                            .setResolution(PrintAttributes.Resolution("pdf", "pdf", 300, 300))
+                            .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
+                            .build()
+                        val adapter = webView.createPrintDocumentAdapter(baseName)
+                        PdfPrint(attrs).print(adapter, file) { ok ->
+                            Handler(Looper.getMainLooper()).post {
+                                webView.destroy()
+                                onDone(if (ok && file.length() > 0) file else null)
                             }
-                        }, 450)
-                    }
+                        }
+                    }, 450)
                 }
-                webView.loadDataWithBaseURL(null, ResumeHtmlHelper.generateHtml(context, resume, dark), "text/html", "utf-8", null)
-            } catch (e: Exception) {
-                onDone(null)
             }
+            webView.loadDataWithBaseURL(null, html, "text/html", "utf-8", null)
+        } catch (e: Exception) {
+            onDone(null)
         }
     }
 }

@@ -2,7 +2,11 @@
 
 package com.example.ui
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -33,6 +37,8 @@ fun AtsScreen(vm: ResumeViewModel) {
     val aiBusy by vm.aiBusy.collectAsState()
     val presets = AtsAnalyzerEngine.commonJobDescriptions
     val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+    val haptic = LocalHapticFeedback.current
+    val chosen = remember { mutableStateListOf<String>() }
 
     var selectedId by remember { mutableStateOf<Int?>(null) }
     var jd by remember { mutableStateOf("") }
@@ -69,7 +75,7 @@ fun AtsScreen(vm: ResumeViewModel) {
         Field("Job description", jd, { jd = it; presetKeywords = emptyList() }, singleLine = false, minLines = 6, placeholder = "Paste the full posting, or tap an example above")
 
         Button(
-            onClick = { selected?.let { vm.analyze(it, jd, presetKeywords) } },
+            onClick = { selected?.let { chosen.clear(); vm.jobDescription.value = jd; vm.analyze(it, jd, presetKeywords) } },
             enabled = selected != null && jd.isNotBlank(),
             modifier = Modifier.fillMaxWidth().height(52.dp),
             shape = MaterialTheme.shapes.small,
@@ -82,6 +88,8 @@ fun AtsScreen(vm: ResumeViewModel) {
         result?.let { r ->
             SoftCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    LaunchedEffect(r) { haptic.performHapticFeedback(HapticFeedbackType.LongPress) }
+                    val sweep by animateFloatAsState(targetValue = r.overallScore / 100f, animationSpec = tween(900), label = "score")
                     Box(Modifier.size(140.dp), contentAlignment = Alignment.Center) {
                         val track = MaterialTheme.colorScheme.surfaceVariant
                         val col = scoreColor(r.overallScore)
@@ -90,7 +98,7 @@ fun AtsScreen(vm: ResumeViewModel) {
                             val inset = stroke / 2
                             val s = Size(size.width - stroke, size.height - stroke)
                             drawArc(track, 135f, 270f, false, Offset(inset, inset), s, style = Stroke(stroke, cap = StrokeCap.Round))
-                            drawArc(col, 135f, 270f * r.overallScore / 100f, false, Offset(inset, inset), s, style = Stroke(stroke, cap = StrokeCap.Round))
+                            drawArc(col, 135f, 270f * sweep, false, Offset(inset, inset), s, style = Stroke(stroke, cap = StrokeCap.Round))
                         }
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text("${r.overallScore}", style = MaterialTheme.typography.headlineMedium)
@@ -126,10 +134,26 @@ fun AtsScreen(vm: ResumeViewModel) {
                             }
                         }
                         if (r.missingKeywords.isNotEmpty()) {
-                            Text("Missing - add them if they are true for you", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Missing - tap the ones that are TRUE for you", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                r.missingKeywords.forEach { Tag(it, MaterialTheme.colorScheme.errorContainer, MaterialTheme.colorScheme.onErrorContainer) }
+                                r.missingKeywords.forEach { k ->
+                                    FilterChip(
+                                        selected = k in chosen,
+                                        onClick = { if (k in chosen) chosen.remove(k) else chosen.add(k) },
+                                        label = { Text(k) },
+                                    )
+                                }
                             }
+                            Button(
+                                onClick = { selected?.let { vm.createTailored(it, chosen.toList()) }; chosen.clear() },
+                                enabled = chosen.isNotEmpty() && selected != null,
+                                modifier = Modifier.fillMaxWidth().height(48.dp), shape = MaterialTheme.shapes.small,
+                            ) {
+                                Icon(Icons.Filled.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Create tailored copy (${chosen.size} skills)")
+                            }
+                            Text("Your original resume is not changed. Only add skills you genuinely have.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
@@ -171,6 +195,13 @@ fun AtsScreen(vm: ResumeViewModel) {
                         }
                     }
                 }
+            }
+        }
+        if (result != null) {
+            OutlinedButton(onClick = { vm.go(Screen.LETTER) }, modifier = Modifier.fillMaxWidth().height(52.dp), shape = MaterialTheme.shapes.small) {
+                Icon(Icons.Filled.Edit, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("Write a cover letter for this job")
             }
         }
         Spacer(Modifier.height(24.dp))

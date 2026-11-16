@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 
 package com.example.ui
 
@@ -10,7 +10,12 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.ui.graphics.Color
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -35,69 +40,102 @@ import com.example.ui.theme.ResumeAccents
 private fun <T> List<T>.replaceAt(i: Int, v: T) = toMutableList().also { if (i in it.indices) it[i] = v }
 private fun <T> List<T>.removeAtIdx(i: Int) = toMutableList().also { if (i in it.indices) it.removeAt(i) }
 
-private val Tabs = listOf("Basics", "Summary", "Experience", "Education", "Skills", "Projects", "More", "Design")
+private val Tabs = listOf("Basics", "Summary", "Experience", "Education", "Skills", "Projects", "More", "Design", "Check")
+
+private fun tabDone(i: Int, r: Resume): Boolean = when (i) {
+    0 -> r.fullName.isNotBlank() && r.jobTitle.isNotBlank() && r.email.isNotBlank()
+    1 -> r.summary.length >= 60
+    2 -> r.experience.isNotEmpty() && r.experience.all { it.description.length >= 40 }
+    3 -> r.education.isNotEmpty()
+    4 -> r.skills.size >= 5
+    5 -> r.projects.isNotEmpty()
+    6 -> r.certifications.isNotEmpty() || r.languages.isNotEmpty() || r.achievements.isNotBlank()
+    else -> false
+}
 
 @Composable
 fun EditorScreen(vm: ResumeViewModel) {
     val r by vm.draft.collectAsState()
     val resume = r ?: return
-    var tab by rememberSaveable { mutableIntStateOf(0) }
+    val pager = rememberPagerState { Tabs.size }
+    val scope = rememberCoroutineScope()
     val (strength, nextStep) = vm.strength(resume)
+    val ok = Color(0xFF16A34A)
 
-    Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { vm.closeEditor() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
-            Column(Modifier.weight(1f)) {
-                Text(resume.name.ifBlank { "Untitled resume" }, style = MaterialTheme.typography.titleMedium, maxLines = 1)
-                Text("Saved automatically", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize()) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { vm.closeEditor() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
+                Column(Modifier.weight(1f)) {
+                    Text(resume.name.ifBlank { "Untitled resume" }, style = MaterialTheme.typography.titleMedium, maxLines = 1)
+                    Text("Saved automatically", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
-            Button(onClick = { vm.go(Screen.PREVIEW) }, shape = MaterialTheme.shapes.small) {
-                Icon(Icons.Filled.Visibility, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("Preview")
-            }
-            Spacer(Modifier.width(8.dp))
-        }
 
-        Column(Modifier.padding(horizontal = 20.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            LinearProgressIndicator(
-                progress = { strength / 100f },
-                modifier = Modifier.fillMaxWidth().height(6.dp),
-                trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                strokeCap = androidx.compose.ui.graphics.StrokeCap.Round,
-            )
-            Text(
-                if (nextStep == null) "Resume strength $strength% - looking complete" else "Resume strength $strength% - $nextStep",
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+            Column(Modifier.padding(horizontal = 20.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                LinearProgressIndicator(
+                    progress = { strength / 100f },
+                    modifier = Modifier.fillMaxWidth().height(6.dp),
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                    strokeCap = androidx.compose.ui.graphics.StrokeCap.Round,
+                )
+                Text(
+                    if (nextStep == null) "Resume strength $strength% - looking complete" else "Resume strength $strength% - $nextStep",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
 
-        ScrollableTabRow(
-            selectedTabIndex = tab, edgePadding = 12.dp, containerColor = androidx.compose.ui.graphics.Color.Transparent,
-            contentColor = MaterialTheme.colorScheme.primary, divider = {},
-        ) {
-            Tabs.forEachIndexed { i, t ->
-                Tab(selected = tab == i, onClick = { tab = i }, text = { Text(t) },
-                    selectedContentColor = MaterialTheme.colorScheme.primary, unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant)
+            ScrollableTabRow(
+                selectedTabIndex = pager.currentPage, edgePadding = 12.dp, containerColor = Color.Transparent,
+                contentColor = MaterialTheme.colorScheme.primary, divider = {},
+            ) {
+                Tabs.forEachIndexed { i, t ->
+                    Tab(
+                        selected = pager.currentPage == i,
+                        onClick = { scope.launch { pager.animateScrollToPage(i) } },
+                        selectedContentColor = MaterialTheme.colorScheme.primary,
+                        unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (tabDone(i, resume)) {
+                                    Icon(Icons.Filled.CheckCircle, contentDescription = "Section complete", tint = ok, modifier = Modifier.size(14.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                }
+                                Text(t)
+                            }
+                        },
+                    )
+                }
+            }
+
+            HorizontalPager(state = pager, modifier = Modifier.weight(1f).fillMaxWidth(), verticalAlignment = Alignment.Top) { page ->
+                Column(
+                    Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+                        .padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 100.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    when (page) {
+                        0 -> BasicsTab(vm, resume)
+                        1 -> SummaryTab(vm, resume)
+                        2 -> ExperienceTab(vm, resume)
+                        3 -> EducationTab(vm, resume)
+                        4 -> SkillsTab(vm, resume)
+                        5 -> ProjectsTab(vm, resume)
+                        6 -> MoreTab(vm, resume)
+                        7 -> DesignTab(vm, resume)
+                        else -> CheckTab(vm, resume)
+                    }
+                }
             }
         }
-
-        Column(
-            Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            when (tab) {
-                0 -> BasicsTab(vm, resume)
-                1 -> SummaryTab(vm, resume)
-                2 -> ExperienceTab(vm, resume)
-                3 -> EducationTab(vm, resume)
-                4 -> SkillsTab(vm, resume)
-                5 -> ProjectsTab(vm, resume)
-                6 -> MoreTab(vm, resume)
-                else -> DesignTab(vm, resume)
-            }
-            Spacer(Modifier.height(24.dp))
-        }
+        ExtendedFloatingActionButton(
+            onClick = { vm.go(Screen.PREVIEW) },
+            icon = { Icon(Icons.Filled.Visibility, contentDescription = null) },
+            text = { Text("Preview") },
+            containerColor = MaterialTheme.colorScheme.primary,
+            contentColor = MaterialTheme.colorScheme.onPrimary,
+            modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp),
+        )
     }
 }
 
@@ -180,7 +218,7 @@ private fun ExperienceTab(vm: ResumeViewModel, r: Resume) {
     val busy by vm.aiBusy.collectAsState()
     r.experience.forEachIndexed { i, e ->
         fun upd(n: ExperienceEntry) = vm.update { it.copy(experience = it.experience.replaceAt(i, n)) }
-        EntryCard("Job ${i + 1}", onRemove = { vm.update { it.copy(experience = it.experience.removeAtIdx(i)) } }) {
+        EntryCard("Job ${i + 1}", onRemove = { vm.removeEntry("Job") { it.copy(experience = it.experience.removeAtIdx(i)) } }) {
             Field("Job title", e.role, { upd(e.copy(role = it)) })
             Field("Company", e.company, { upd(e.copy(company = it)) })
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -208,7 +246,7 @@ private fun ExperienceTab(vm: ResumeViewModel, r: Resume) {
 private fun EducationTab(vm: ResumeViewModel, r: Resume) {
     r.education.forEachIndexed { i, e ->
         fun upd(n: EducationEntry) = vm.update { it.copy(education = it.education.replaceAt(i, n)) }
-        EntryCard("Education ${i + 1}", onRemove = { vm.update { it.copy(education = it.education.removeAtIdx(i)) } }) {
+        EntryCard("Education ${i + 1}", onRemove = { vm.removeEntry("Education") { it.copy(education = it.education.removeAtIdx(i)) } }) {
             Field("School", e.institution, { upd(e.copy(institution = it)) })
             Field("Degree / course", e.degree, { upd(e.copy(degree = it)) })
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -245,7 +283,7 @@ private fun SkillsTab(vm: ResumeViewModel, r: Resume) {
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             r.skills.forEachIndexed { i, s ->
                 InputChip(
-                    selected = false, onClick = { vm.update { it.copy(skills = it.skills.removeAtIdx(i)) } },
+                    selected = false, onClick = { vm.removeEntry("Skill") { it.copy(skills = it.skills.removeAtIdx(i)) } },
                     label = { Text(s.name) },
                     trailingIcon = { Icon(Icons.Filled.Close, contentDescription = "Remove ${s.name}", modifier = Modifier.size(16.dp)) },
                 )
@@ -264,7 +302,7 @@ private fun SkillsTab(vm: ResumeViewModel, r: Resume) {
 private fun ProjectsTab(vm: ResumeViewModel, r: Resume) {
     r.projects.forEachIndexed { i, p ->
         fun upd(n: ProjectEntry) = vm.update { it.copy(projects = it.projects.replaceAt(i, n)) }
-        EntryCard("Project ${i + 1}", onRemove = { vm.update { it.copy(projects = it.projects.removeAtIdx(i)) } }) {
+        EntryCard("Project ${i + 1}", onRemove = { vm.removeEntry("Project") { it.copy(projects = it.projects.removeAtIdx(i)) } }) {
             Field("Project name", p.title, { upd(p.copy(title = it)) })
             Field("Tools used", p.techStack, { upd(p.copy(techStack = it)) })
             Field("What it does / your result", p.description, { upd(p.copy(description = it)) }, singleLine = false, minLines = 3)
@@ -281,7 +319,7 @@ private fun MoreTab(vm: ResumeViewModel, r: Resume) {
     SectionTitle("Certifications")
     r.certifications.forEachIndexed { i, c ->
         fun upd(n: CertificationEntry) = vm.update { it.copy(certifications = it.certifications.replaceAt(i, n)) }
-        EntryCard("Certification ${i + 1}", onRemove = { vm.update { it.copy(certifications = it.certifications.removeAtIdx(i)) } }) {
+        EntryCard("Certification ${i + 1}", onRemove = { vm.removeEntry("Certification") { it.copy(certifications = it.certifications.removeAtIdx(i)) } }) {
             Field("Name", c.name, { upd(c.copy(name = it)) })
             Field("Issued by", c.issuer, { upd(c.copy(issuer = it)) })
             Field("Date", c.date, { upd(c.copy(date = it)) })
@@ -292,7 +330,7 @@ private fun MoreTab(vm: ResumeViewModel, r: Resume) {
     SectionTitle("Languages")
     r.languages.forEachIndexed { i, l ->
         fun upd(n: LanguageEntry) = vm.update { it.copy(languages = it.languages.replaceAt(i, n)) }
-        EntryCard("Language ${i + 1}", onRemove = { vm.update { it.copy(languages = it.languages.removeAtIdx(i)) } }) {
+        EntryCard("Language ${i + 1}", onRemove = { vm.removeEntry("Language") { it.copy(languages = it.languages.removeAtIdx(i)) } }) {
             Field("Language", l.name, { upd(l.copy(name = it)) })
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("Native", "Fluent", "Intermediate", "Basic").forEach { p ->
@@ -312,6 +350,7 @@ private fun MoreTab(vm: ResumeViewModel, r: Resume) {
 private fun DesignTab(vm: ResumeViewModel, r: Resume) {
     val accent = ResumeAccents.of(r.colorSchemeId)
     val current = ResumeHtmlHelper.normalizeTemplate(r.templateId)
+    val opts = DesignOptions.parse(r)
     SectionTitle("Template")
     LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(vertical = 4.dp)) {
         items(TemplateNames) { name ->
@@ -334,17 +373,86 @@ private fun DesignTab(vm: ResumeViewModel, r: Resume) {
     }
 
     SectionTitle("Accent colour")
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         ResumeAccents.all.forEach { (id, c) ->
             Swatch(c, r.colorSchemeId == id, id) { vm.update { it.copy(colorSchemeId = id) } }
         }
     }
 
+    SectionTitle("Font")
+    Segmented(DesignOptions.FONTS, opts.font) { v -> vm.updateDesign { it.copy(font = v) } }
     SectionTitle("Text size")
-    Segmented(listOf("Compact", "Standard", "Large"), r.fontSize) { v -> vm.update { it.copy(fontSize = v) } }
+    Segmented(listOf("Compact", "Standard", "Large"), opts.size) { v -> vm.updateDesign { it.copy(size = v) } }
     SectionTitle("Page margins")
     Segmented(listOf("Narrow", "Standard", "Wide"), r.margins) { v -> vm.update { it.copy(margins = v) } }
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+        Text("Tighter line spacing", style = MaterialTheme.typography.bodyLarge)
+        Switch(checked = opts.tight, onCheckedChange = { v -> vm.updateDesign { it.copy(tight = v) } })
+    }
+
+    SectionTitle("Section order") {
+        TextButton(onClick = { vm.updateDesign { it.copy(order = DesignOptions.DEFAULT_ORDER) } }) { Text("Reset") }
+    }
+    Text(
+        "Applies to the newer templates (Compact, Academic, Classic, Bold Header, Timeline). On Reset each template uses its own best order.",
+        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    SoftCard(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(vertical = 6.dp)) {
+            opts.order.forEachIndexed { i, key ->
+                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(DesignOptions.SECTION_TITLES.getValue(key), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                    IconButton(
+                        enabled = i > 0,
+                        onClick = { vm.updateDesign { o -> o.copy(order = o.order.toMutableList().also { java.util.Collections.swap(it, i, i - 1) }) } },
+                    ) { Icon(Icons.Filled.KeyboardArrowUp, contentDescription = "Move ${DesignOptions.SECTION_TITLES.getValue(key)} up") }
+                    IconButton(
+                        enabled = i < opts.order.lastIndex,
+                        onClick = { vm.updateDesign { o -> o.copy(order = o.order.toMutableList().also { java.util.Collections.swap(it, i, i + 1) }) } },
+                    ) { Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "Move ${DesignOptions.SECTION_TITLES.getValue(key)} down") }
+                }
+            }
+        }
+    }
     Text("The preview and the PDF use exactly these settings.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+}
+
+// ---------------- Writing check ----------------
+@Composable
+private fun CheckTab(vm: ResumeViewModel, r: Resume) {
+    val issues = remember(r) { vm.writingIssues(r) }
+    if (issues.isEmpty()) {
+        SoftCard(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("No problems found", style = MaterialTheme.typography.titleMedium)
+                Text("No weak phrases, misspellings or missing numbers detected. Read it once more out loud before you send it.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        return
+    }
+    val high = issues.count { it.level == IssueLevel.HIGH }
+    val med = issues.count { it.level == IssueLevel.MEDIUM }
+    val low = issues.count { it.level == IssueLevel.LOW }
+    Text("${issues.size} things to look at: $high important, $med medium, $low minor", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    issues.groupBy { it.section }.forEach { (section, list) ->
+        SectionTitle(section)
+        list.forEach { i ->
+            SoftCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        when (i.level) {
+                            IssueLevel.HIGH -> Tag("Important", MaterialTheme.colorScheme.errorContainer, MaterialTheme.colorScheme.onErrorContainer)
+                            IssueLevel.MEDIUM -> Tag("Medium", MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer)
+                            IssueLevel.LOW -> Tag("Minor", MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Text(i.where, style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f, fill = false))
+                    }
+                    Text(i.problem, style = MaterialTheme.typography.bodyMedium)
+                    Text(i.fix, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+    }
 }
 
 @Composable

@@ -78,7 +78,65 @@ object ResumeHtmlHelper {
         return null
     }
 
+    fun marginMmOf(margins: String): Int = when (margins) { "Narrow" -> 8; "Wide" -> 18; else -> 12 }
+
+    private fun String.h() = replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")
+
+    /** Every user-typed string is escaped once here, so "&" or "<" can never break the document. */
+    private fun escapeResume(r: Resume): Resume = r.copy(
+        name = r.name.h(), fullName = r.fullName.h(), jobTitle = r.jobTitle.h(), phone = r.phone.h(), email = r.email.h(),
+        location = r.location.h(), linkedinUrl = r.linkedinUrl.h(), githubUrl = r.githubUrl.h(), portfolioUrl = r.portfolioUrl.h(),
+        summary = r.summary.h(), achievements = r.achievements.h(),
+        education = r.education.map { it.copy(institution = it.institution.h(), degree = it.degree.h(), startYear = it.startYear.h(), endYear = it.endYear.h(), grade = it.grade.h(), achievements = it.achievements.h()) },
+        experience = r.experience.map { it.copy(company = it.company.h(), role = it.role.h(), startDate = it.startDate.h(), endDate = it.endDate.h(), description = it.description.h()) },
+        skills = r.skills.map { it.copy(name = it.name.h(), level = it.level.h(), category = it.category.h()) },
+        projects = r.projects.map { it.copy(title = it.title.h(), techStack = it.techStack.h(), description = it.description.h(), githubLink = it.githubLink.h(), liveLink = it.liveLink.h()) },
+        certifications = r.certifications.map { it.copy(name = it.name.h(), issuer = it.issuer.h(), date = it.date.h(), credentialId = it.credentialId.h(), url = it.url.h()) },
+        languages = r.languages.map { it.copy(name = it.name.h(), proficiency = it.proficiency.h()) },
+    )
+
+    private fun fontStack(font: String): String? = when (font) {
+        "Sans" -> "Roboto, 'Noto Sans', Arial, sans-serif"
+        "Serif" -> "'Noto Serif', Georgia, serif"
+        "Mono" -> "'Roboto Mono', monospace"
+        else -> null
+    }
+
+    /**
+     * The ONE place every output (preview, thumbnail, print, PDF) comes from.
+     * [thumbnail] gives a clean first-page miniature for the resume list.
+     */
     fun generateHtml(
+        context: Context,
+        resume: Resume,
+        isDarkExport: Boolean = false,
+        forPreview: Boolean = false,
+        thumbnail: Boolean = false,
+    ): String {
+        val opts = DesignOptions.parse(resume.fontSize)
+        val safe = escapeResume(resume).copy(fontSize = opts.size)
+        val tpl = normalizeTemplate(resume.templateId)
+        val mm = marginMmOf(resume.margins)
+        var html = if (tpl in ExtraTemplates.ids) ExtraTemplates.render(context, safe, tpl, opts, isDarkExport, mm)
+        else generateLegacy(context, safe, isDarkExport, false)
+
+        val extra = StringBuilder()
+        fontStack(opts.font)?.let { extra.append("<style>body, body * { font-family: $it !important; }</style>") }
+        if (opts.tight) extra.append("<style>body { line-height: 1.25 !important; } p, li { margin-top: 0 !important; margin-bottom: 2px !important; } h2, h3 { margin-top: 8px !important; margin-bottom: 4px !important; }</style>")
+        if (forPreview) extra.append(
+            "<meta name=\"viewport\" content=\"width=794, user-scalable=yes\">" +
+                "<style>html { background: ${if (isDarkExport) "#0b0f17" else "#cfd6e0"}; } " +
+                "body { box-sizing: border-box; width: 794px; margin: 18px auto; padding: ${mm}mm; min-height: 1123px; box-shadow: 0 8px 28px rgba(0,0,0,.28); }</style>"
+        )
+        if (thumbnail) extra.append(
+            "<meta name=\"viewport\" content=\"width=794\">" +
+                "<style>html, body { margin: 0; overflow: hidden; background: #fff; } " +
+                "body { box-sizing: border-box; width: 794px; padding: ${mm}mm; }</style>"
+        )
+        return html.replace("</head>", extra.toString() + "</head>")
+    }
+
+    private fun generateLegacy(
         context: Context,
         resume: Resume,
         isDarkExport: Boolean = false,
@@ -1173,8 +1231,7 @@ object ResumeHtmlHelper {
 
     /** Maps current and legacy template ids to the five templates the renderer knows. */
     fun normalizeTemplate(raw: String): String = when {
-        raw == "Modern Professional" || raw == "Minimal ATS" || raw == "Premium Creative" ||
-            raw == "Developer Resume" || raw == "Executive Premium" -> raw
+        raw in TemplateNames -> raw
         raw.contains("Developer", true) || raw.contains("Terminal", true) -> "Developer Resume"
         raw.contains("Executive", true) || raw.contains("Corporate", true) -> "Executive Premium"
         raw.contains("Creative", true) -> "Premium Creative"

@@ -18,7 +18,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
-enum class Screen { RESUMES, ATS, SETTINGS, EDITOR, PREVIEW }
+enum class Screen { RESUMES, ATS, LETTER, SETTINGS, EDITOR, PREVIEW }
+
+/** One-line message for the snackbar, optionally with an action such as Undo. */
+data class UiMessage(val text: String, val actionLabel: String? = null, val onAction: (() -> Unit)? = null)
 
 class ResumeViewModel(private val dao: ResumeDao, private val app: Context) : ViewModel() {
 
@@ -30,7 +33,15 @@ class ResumeViewModel(private val dao: ResumeDao, private val app: Context) : Vi
     val screen = MutableStateFlow(Screen.RESUMES)
     val draft = MutableStateFlow<Resume?>(null)
     val themeMode = MutableStateFlow(prefs.getString("theme_mode", "system") ?: "system")
-    val message = MutableStateFlow<String?>(null)
+    val message = MutableStateFlow<UiMessage?>(null)
+    fun say(text: String) { message.value = UiMessage(text) }
+
+    val showOnboarding = MutableStateFlow(!prefs.getBoolean("onboarded", false))
+    val language = MutableStateFlow(prefs.getString("language", "en") ?: "en")
+
+    // cover letter state
+    val letterText = MutableStateFlow("")
+    val jobDescription = MutableStateFlow("")
 
     val aiAvailable: Boolean =
         BuildConfig.GEMINI_API_KEY.isNotBlank() && BuildConfig.GEMINI_API_KEY != "MY_GEMINI_API_KEY"
@@ -42,6 +53,7 @@ class ResumeViewModel(private val dao: ResumeDao, private val app: Context) : Vi
     private val saveTrigger = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
 
     init {
+        Lang.code = language.value
         viewModelScope.launch {
             saveTrigger.debounce(500).collect { saveNow() }
         }
@@ -105,14 +117,14 @@ class ResumeViewModel(private val dao: ResumeDao, private val app: Context) : Vi
                     Uri.fromFile(f).toString()
                 } catch (e: Exception) { null }
             }
-            if (saved == null) message.value = "Could not read that image." else update { it.copy(avatarUri = saved) }
+            if (saved == null) say("Could not read that image.") else update { it.copy(avatarUri = saved) }
         }
     }
 
     // ---------- AI (never inserts fake text when no key is configured) ----------
     private fun needAi(): Boolean {
         if (!aiAvailable) {
-            message.value = "AI is off. Add GEMINI_API_KEY to enable it (see README)."
+            say("AI is off. Add GEMINI_API_KEY to enable it (see README).")
             return false
         }
         return true
@@ -145,7 +157,7 @@ class ResumeViewModel(private val dao: ResumeDao, private val app: Context) : Vi
 
     fun aiSkills() {
         val r = draft.value ?: return
-        if (r.jobTitle.isBlank()) { message.value = "Add your job title first."; return }
+        if (r.jobTitle.isBlank()) { say("Add your job title first."); return }
         if (!needAi()) return
         viewModelScope.launch {
             aiBusy.value = "skills"
@@ -182,6 +194,78 @@ class ResumeViewModel(private val dao: ResumeDao, private val app: Context) : Vi
             aiBusy.value = null
         }
     }
+
+
+    // ---------- undo ----------
+    /** Applies a removal and offers Undo in the snackbar. */
+    fun removeEntry(label: String, change: (Resume) -> Resume) {
+        val before = draft.value ?: return
+        update(change)
+        message.value = UiMessage("$label removed", "Undo") {
+            draft.value = before
+            saveTrigger.tryEmit(Unit)
+        }
+    }
+
+    fun updateDesign(change: (DesignOptions) -> DesignOptions) =
+        update { it.copy(fontSize = change(DesignOptions.parse(it)).encode()) }
+
+    // ---------- onboarding / import / backup ----------
+    fun finishOnboarding(name: String, job: String, email: String) {
+        prefs.edit().putBoolean("onboarded", true).apply()
+        showOnboarding.value = false
+        if (name.isBlank() && job.isBlank()) return
+        viewModelScope.launch {
+            val r = Resume(name = "My resume", fullName = name.trim(), jobTitle = job.trim(), email = email.trim())
+            val id = dao.insertResume(r).toInt()
+            openEditor(r.copy(id = id))
+        }
+    }
+
+    fun importLinkedIn(uri: Uri) {
+        viewModelScope.launch {
+            val r = withContext(Dispatchers.IO) { LinkedInImport.fromZip(app, uri) }
+            if (r == null) {
+                say("That file is not a LinkedIn data export (.zip with Profile.csv, Positions.csv...).")
+            } else {
+                val id = dao.insertResume(r).toInt()
+                openEditor(r.copy(id = id))
+                say("Imported. Please check each section.")
+            }
+        }
+    }
+
+    // ---------- tailor to a job ----------
+    /** Copies the resume and adds the chosen keywords as skills. Original stays untouched. */
+    fun createTailored(base: Resume, keywords: List<String>) {
+        viewModelScope.launch {
+            val have = base.skills.map { it.name.lowercase() }.toSet()
+            val added = keywords.filter { it.isNotBlank() && it.lowercase() !in have }.map { SkillEntry(it, "Intermediate", "Technical") }
+            val copy = base.copy(id = 0, name = "${base.name} - tailored", skills = base.skills + added, atsScore = 0, lastModified = System.currentTimeMillis())
+            val id = dao.insertResume(copy).toInt()
+            val saved = copy.copy(id = id)
+            message.value = UiMessage("Created a tailored copy with ${added.size} new skills", "Open") { openEditor(saved) }
+        }
+    }
+
+    // ---------- cover letter ----------
+    fun generateLetter(r: Resume, role: String, company: String, manager: String, tone: String, jd: String) {
+        viewModelScope.launch {
+            aiBusy.value = "letter"
+            val ai = if (aiAvailable) GeminiClient.generateCoverLetter(AtsAnalyzerEngine.resumeToPlainText(r), jd, role.ifBlank { r.jobTitle }, company, manager, tone) else null
+            letterText.value = ai ?: CoverLetter.offlineDraft(r, role, company, manager)
+            if (ai == null) say(if (aiAvailable) "AI did not answer, so here is a basic draft you can edit." else "AI is off, so here is a fill-in draft from your resume. Edit it before sending.")
+            aiBusy.value = null
+        }
+    }
+
+    fun setLanguage(code: String) {
+        language.value = code
+        Lang.code = code
+        prefs.edit().putString("language", code).apply()
+    }
+
+    fun writingIssues(r: Resume): List<WritingIssue> = WritingCheck.analyze(r)
 
     // ---------- settings ----------
     fun setThemeMode(mode: String) {

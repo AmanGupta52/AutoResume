@@ -4,15 +4,27 @@ Build a resume or CV on your phone, check how well it passes ATS screening, and 
 Native Android app (Kotlin, Jetpack Compose, Room) with a soft Neumorphism interface.
 
 ## Features
-- Resume list: create (blank or with an example), rename, duplicate, delete
-- Editor with autosave and a live "resume strength" meter: basics, photo, summary, experience, education, skills, projects, certifications, languages, extras
-- 5 templates with visual thumbnails: Modern Professional, Minimal ATS, Premium Creative, Developer Resume, Executive Premium
-- Accent colours, text size and page margins that really change the document
-- Live preview that is the same document as the PDF (what you see is what you export)
-- A4 PDF export: save, share or print
-- ATS check: pick a resume, paste a job description, get a score, keyword gaps and fixes
-- Optional AI writing help (Gemini): summary, bullet points, skill ideas, tailoring tips
-- System / light / dark theme; everything stored on the phone
+**Build**
+- Resume list with real first-page thumbnails: create (blank or example), rename, duplicate, delete
+- Import from a LinkedIn data export (.zip) so you do not retype your history
+- Editor with autosave, swipeable tabs, green ticks per finished section, undo after deleting, and a live "resume strength" meter
+- 10 templates with thumbnails, font choice (Sans / Serif / Mono), text size, margins, tighter spacing, section reordering, accent colours
+- "Fit to 1 page" and a live page counter in the preview
+
+**Output**
+- Preview, print and PDF are the same document, so they always match
+- A4 PDF (save or share), Word (.docx) and print
+
+**Get hired**
+- ATS check against a pasted job description: score, keyword gaps, fixes
+- Tailor to a job: tap the missing keywords that are true for you and create a tailored copy; the original stays untouched
+- Writing check: weak phrases ("responsible for"), missing numbers, misspellings, long or short bullets, invalid email
+- Cover letter: written by AI when a Gemini key is set, otherwise a fill-in draft from your resume; exports as a matching PDF
+- AI help (optional): summary, bullet points, skill ideas
+
+**App**
+- First-run onboarding, English and Hindi interface, system / light / dark theme
+- Everything stays on the phone
 
 ## Download the APK
 1. Open the **Actions** tab of this repository and choose the latest **Build APK** run.
@@ -33,6 +45,17 @@ The APK is then attached to the repository's **Releases** page.
 Tip: run `gradle wrapper` once locally and commit `gradlew` and `gradle/wrapper/`. The workflow then uses it.
 If the build asks for a newer Gradle, change `9.3.1` in `.github/workflows/android-build.yml`.
 
+## Signed release APK (for sharing widely or the Play Store)
+1. Create a key once and keep it safe (losing it means you cannot update the app):
+   `keytool -genkeypair -v -keystore my-upload-key.jks -alias upload -keyalg RSA -keysize 2048 -validity 10000`
+2. Convert it: `base64 -w0 my-upload-key.jks` and add these repository secrets:
+   `KEYSTORE_BASE64`, `STORE_PASSWORD`, `KEY_PASSWORD`.
+3. Push. The workflow then also builds a signed `app-release.apk`.
+Debug APKs are fine for testing but are not accepted by the Play Store.
+
+## Tests
+Unit tests run on every push (Actions > "unit-test-report" artifact). Locally: `gradle testDebugUnitTest`.
+
 ## Build locally
 1. Install Android Studio and open this folder.
 2. Copy `.env.example` to `.env` and set `GEMINI_API_KEY`.
@@ -42,7 +65,10 @@ If the build asks for a newer Gradle, change `9.3.1` in `.github/workflows/andro
 
 ## Project layout
 - `MainActivity.kt` - entry point, navigation shell
-- `ui/ResumeViewModel.kt` - state, autosave, AI and ATS actions
+- `ui/ResumeViewModel.kt` - state, autosave, undo, AI, ATS, import, cover letter
+- `ui/ExtraTemplates.kt`, `ui/DesignOptions.kt` - five extra templates, font / order / spacing options
+- `ui/WritingCheck.kt`, `ui/CoverLetter.kt`, `ui/DocxExporter.kt`, `ui/LinkedInImport.kt` - writing check, letters, Word export, LinkedIn import
+- `ui/Translations.kt`, `ui/HindiStrings.kt` - interface languages
 - `ui/ResumesScreen.kt`, `EditorScreen.kt`, `PreviewScreen.kt`, `AtsScreen.kt`, `SettingsScreen.kt` - screens
 - `ui/Ui.kt`, `ui/theme/` - design system (Material 3 colour roles, soft cards, template thumbnails)
 - `ui/ResumeHtmlHelper.kt` - the single resume document used by preview, print and PDF

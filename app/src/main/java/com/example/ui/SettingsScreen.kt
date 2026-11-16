@@ -14,6 +14,7 @@ import com.example.BuildConfig
 @Composable
 fun SettingsScreen(vm: ResumeViewModel) {
     val mode by vm.themeMode.collectAsState()
+    val lang by vm.language.collectAsState()
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text("Settings", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onBackground)
 
@@ -30,6 +31,25 @@ fun SettingsScreen(vm: ResumeViewModel) {
                         ) { Text(label) }
                     }
                 }
+            }
+        }
+
+        SoftCard(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Language", style = MaterialTheme.typography.titleMedium)
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                    Lang.options.forEachIndexed { i, (code, label) ->
+                        SegmentedButton(
+                            selected = lang == code,
+                            onClick = { vm.setLanguage(code) },
+                            shape = SegmentedButtonDefaults.itemShape(i, Lang.options.size),
+                        ) { Text(label) }
+                    }
+                }
+                Text(
+                    "Changes the app menus and buttons. Your resume text is never translated.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
 
