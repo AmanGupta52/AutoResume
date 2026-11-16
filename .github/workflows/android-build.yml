@@ -27,6 +27,8 @@ jobs:
                 AutoResumeSecondaryFlows.kt AutoResumeEditorWorkspace.kt \
                 WorkAndEducationEditorScreen.kt Neu.kt MainViewModel.kt theme/AppTheme.kt
           rm -rf locale
+          # An earlier upload added .png icons next to the .webp ones; Android rejects duplicates.
+          rm -f ../../../../res/mipmap-*/ic_launcher*.png
 
       - uses: actions/setup-java@v5
         with:
