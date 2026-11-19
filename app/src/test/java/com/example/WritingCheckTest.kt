@@ -32,9 +32,13 @@ class WritingCheckTest {
     @Test
     fun designOptionsRoundTripAndLegacyValues() {
         assertEquals("Compact", DesignOptions.parse("Compact").size)
-        val o = DesignOptions(size = "Large", font = "Serif", order = DesignOptions.DEFAULT_ORDER.reversed(), tight = true)
+        val o = DesignOptions(size = "Large", font = "Lora", order = DesignOptions.DEFAULT_ORDER.reversed(), tight = true)
         assertEquals(o, DesignOptions.parse(o.encode()))
         assertEquals(DesignOptions.DEFAULT_ORDER.size, DesignOptions.parse("Standard;order=skills").order.size)
+        // values saved by older versions still map to the new fonts
+        assertEquals("Lora", DesignOptions.parse("Standard;font=Serif").font)
+        assertEquals("Inter", DesignOptions.parse("Standard;font=Sans").font)
+        assertEquals("Default", DesignOptions.parse("Standard;font=Mono").font)
     }
 
     @Test
