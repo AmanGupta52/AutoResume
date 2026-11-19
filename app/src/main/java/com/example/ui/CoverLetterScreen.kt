@@ -83,7 +83,7 @@ fun CoverLetterScreen(vm: ResumeViewModel) {
                         if (r != null && !exporting) {
                             exporting = true
                             val safe = r.fullName.ifBlank { "Cover" }.replace(Regex("[^A-Za-z0-9_-]+"), "_")
-                            ResumePdfHelper.exportHtml(context, CoverLetter.html(r, text, company), "${safe}_Cover_Letter") { f ->
+                            ResumePdfHelper.exportHtml(context, CoverLetter.html(context, r, text, company), "${safe}_Cover_Letter") { f ->
                                 exporting = false
                                 if (f == null) android.widget.Toast.makeText(context, "Could not create the PDF.", android.widget.Toast.LENGTH_LONG).show()
                                 else {

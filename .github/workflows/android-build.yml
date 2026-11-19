@@ -46,12 +46,17 @@ jobs:
         with:
           gradle-version: ${{ hashFiles('gradlew') != '' && 'wrapper' || '9.3.1' }}
 
-      - name: Create .env (Gemini key)
+      - name: Create .env (NVIDIA key)
+        env:
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          NVIDIA_MODEL: ${{ secrets.NVIDIA_MODEL }}
         run: |
-          if [ -n "${{ secrets.GEMINI_API_KEY }}" ]; then
-            echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" > .env
-          else
-            cp .env.example .env
+          cp .env.example .env
+          if [ -n "$NVIDIA_API_KEY" ]; then
+            sed -i "s|^NVIDIA_API_KEY=.*|NVIDIA_API_KEY=$NVIDIA_API_KEY|" .env
+          fi
+          if [ -n "$NVIDIA_MODEL" ]; then
+            sed -i "s|^NVIDIA_MODEL=.*|NVIDIA_MODEL=$NVIDIA_MODEL|" .env
           fi
 
       - name: Create debug keystore

@@ -215,14 +215,14 @@ fun TemplateThumb(templateId: String, accent: Color, modifier: Modifier = Modifi
                 var y = h * .24f
                 repeat(5) { bar(w * .1f, y, w * .2f, accent); bar(w * .38f, y, w * .5f, line); bar(w * .38f, y + h * .04f, w * .4f, line); y += h * .13f }
             }
-            else -> { // Modern Professional: tinted sidebar + main column
-                drawRect(accent.copy(alpha = .16f), Offset(0f, 0f), Size(w * .32f, h))
-                bar(w * .06f, h * .1f, w * .2f, accent, h * .04f)
-                var y = h * .22f
-                repeat(5) { bar(w * .06f, y, w * .2f, line); y += h * .07f }
-                bar(w * .4f, h * .1f, w * .45f, dark, h * .05f)
-                y = h * .22f
-                repeat(6) { bar(w * .4f, y, if (it % 3 == 0) w * .25f else w * .5f, if (it % 3 == 0) accent else line); y += h * .08f }
+            else -> { // Modern Professional: name left, contact right, accent rule
+                bar(w * .1f, h * .08f, w * .38f, dark, h * .05f)
+                bar(w * .1f, h * .15f, w * .24f, accent, h * .025f)
+                bar(w * .62f, h * .08f, w * .28f, line)
+                bar(w * .62f, h * .12f, w * .28f, line)
+                drawRect(accent, Offset(w * .1f, h * .2f), Size(w * .8f, h * .012f))
+                var y = h * .28f
+                repeat(6) { bar(w * .1f, y, if (it % 3 == 0) w * .22f else w * .8f, if (it % 3 == 0) accent else line); y += h * .08f }
             }
         }
     }
@@ -296,11 +296,11 @@ val TemplateNames = listOf(
     "Compact Two-Column", "Academic CV", "Classic Serif", "Bold Header", "Timeline",
 )
 val TemplateBlurbs = mapOf(
-    "Modern Professional" to "Sidebar + main column. Good all-rounder.",
-    "Minimal ATS" to "Plain single column. Safest for applicant systems.",
-    "Premium Creative" to "Colour header band. For design and marketing roles.",
-    "Developer Resume" to "Monospace accents. For engineers.",
-    "Executive Premium" to "Serif type, gold rule. For senior roles.",
+    "Modern Professional" to "Clean header, Inter type. Best all-rounder.",
+    "Minimal ATS" to "Plain single column, black on white. Safest for applicant systems.",
+    "Premium Creative" to "Colour header band with photo. For design and marketing.",
+    "Developer Resume" to "Dark header, tech chips. For engineers.",
+    "Executive Premium" to "Lora serif with a gold rule. For senior roles.",
     "Compact Two-Column" to "Education first, skills in a side column. Great for freshers.",
     "Academic CV" to "Serif, education and honours first. For research and teaching.",
     "Classic Serif" to "Traditional centred header. Conservative industries.",

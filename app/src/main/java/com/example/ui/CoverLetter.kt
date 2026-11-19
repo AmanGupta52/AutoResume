@@ -33,14 +33,16 @@ object CoverLetter {
     private fun esc(s: String) = s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
     /** A4 letter that matches the resume accent colour and font style. */
-    fun html(r: Resume, body: String, company: String, dark: Boolean = false): String {
+    fun html(context: android.content.Context, r: Resume, body: String, company: String, dark: Boolean = false): String {
         val opts = DesignOptions.parse(r)
         val accent = when (r.colorSchemeId) { "Green" -> "#1B8A3C"; "Cyan" -> "#0E7C9B"; "Slate" -> "#4B5563"; "Dark" -> "#1F2937"; else -> "#1F5FBF" }
-        val font = when (opts.font) {
-            "Serif" -> "'Noto Serif', Georgia, serif"
-            "Mono" -> "'Roboto Mono', monospace"
-            else -> "Roboto, 'Noto Sans', Arial, sans-serif"
+        val family = FontLoader.familyOfChoice(opts.font) ?: when (ResumeHtmlHelper.normalizeTemplate(r.templateId)) {
+            "Academic CV", "Classic Serif", "Executive Premium" -> FontLoader.LORA
+            "Minimal ATS", "Compact Two-Column", "Developer Resume" -> FontLoader.SOURCE
+            else -> FontLoader.INTER
         }
+        val font = FontLoader.stack(family)
+        val fontFaces = FontLoader.css(context, family)
         val mm = ResumeHtmlHelper.marginMmOf(r.margins)
         val bg = if (dark) "#111827" else "#ffffff"
         val fg = if (dark) "#e5e7eb" else "#1f2937"
@@ -48,9 +50,10 @@ object CoverLetter {
         val date = DateFormat.getDateInstance(DateFormat.LONG).format(Date())
         val paragraphs = body.split("\n\n").filter { it.isNotBlank() }.joinToString("") { "<p>${esc(it.trim()).replace("\n", "<br>")}</p>" }
         return """<!DOCTYPE html><html><head><meta charset="utf-8"><title>Cover letter</title><style>
+$fontFaces
 @page { size: A4; margin: ${mm + 6}mm; }
 * { box-sizing: border-box; }
-body { margin: 0; font-family: $font; font-size: 12px; line-height: 1.55; color: $fg; background: $bg; -webkit-print-color-adjust: exact; }
+body { margin: 0; font-family: $font; font-size: 11pt; line-height: 1.55; color: $fg; background: $bg; -webkit-print-color-adjust: exact; }
 .head { border-bottom: 3px solid $accent; padding-bottom: 10px; margin-bottom: 22px; }
 h1 { margin: 0; font-size: 26px; color: $accent; }
 .role { color: #6b7280; margin-top: 2px; }

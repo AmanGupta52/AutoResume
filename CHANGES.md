@@ -27,3 +27,9 @@ HTML escaping of all user text, unit tests in CI, new app icon, signed-release i
 Not included: importing text from a PDF resume. Android cannot read PDF text without an extra library and OCR; the LinkedIn zip
 import covers the "do not retype" case without new dependencies. Design extras (font, order, spacing) are stored inside the
 existing `fontSize` column, so there is no database migration and existing resumes keep working.
+
+## Round 4 - professional templates and NVIDIA AI
+- All 10 templates redesigned in one renderer (`ExtraTemplates.kt`); the old 1,000-line legacy renderer is gone. Saved resumes keep their template ids.
+- Type is set in points (10.4 pt body by default, A4) instead of tiny pixel sizes, with proper heading hierarchy and spacing.
+- Bundled fonts (Inter, Source Sans 3, Lora; SIL Open Font License) in `assets/fonts`, embedded into the HTML so preview, print and PDF look the same on every phone. Font choice in the editor: Default (the template's own), Inter, Source Sans, Lora.
+- AI now uses NVIDIA's hosted models (`api/AiClient.kt`, OpenAI-compatible API). Set `NVIDIA_API_KEY` (and optionally `NVIDIA_MODEL`) in `.env` or as GitHub secrets. On failure the app says so instead of inserting placeholder text.

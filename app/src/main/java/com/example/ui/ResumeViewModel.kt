@@ -8,8 +8,7 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.BuildConfig
-import com.example.api.GeminiClient
+import com.example.api.AiClient
 import com.example.data.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
@@ -43,8 +42,7 @@ class ResumeViewModel(private val dao: ResumeDao, private val app: Context) : Vi
     val letterText = MutableStateFlow("")
     val jobDescription = MutableStateFlow("")
 
-    val aiAvailable: Boolean =
-        BuildConfig.GEMINI_API_KEY.isNotBlank() && BuildConfig.GEMINI_API_KEY != "MY_GEMINI_API_KEY"
+    val aiAvailable: Boolean = AiClient.isConfigured
     val aiBusy = MutableStateFlow<String?>(null)
 
     val atsResult = MutableStateFlow<AtsScanData?>(null)
@@ -124,11 +122,13 @@ class ResumeViewModel(private val dao: ResumeDao, private val app: Context) : Vi
     // ---------- AI (never inserts fake text when no key is configured) ----------
     private fun needAi(): Boolean {
         if (!aiAvailable) {
-            say("AI is off. Add GEMINI_API_KEY to enable it (see README).")
+            say("AI is off. Add NVIDIA_API_KEY to enable it (see README).")
             return false
         }
         return true
     }
+
+    private fun aiFailed() = say("The AI did not answer. Check your internet connection and NVIDIA_API_KEY, then try again.")
 
     fun aiSummary() {
         val r = draft.value ?: return
@@ -137,8 +137,8 @@ class ResumeViewModel(private val dao: ResumeDao, private val app: Context) : Vi
             aiBusy.value = "summary"
             val skills = r.skills.joinToString { it.name }
             val exp = r.experience.joinToString("; ") { "${it.role} at ${it.company}" }
-            val text = GeminiClient.generateSummary(r.jobTitle.ifBlank { "professional" }, skills, exp)
-            update { it.copy(summary = text) }
+            val text = AiClient.generateSummary(r.jobTitle.ifBlank { "professional" }, skills, exp)
+            if (text == null) aiFailed() else update { it.copy(summary = text) }
             aiBusy.value = null
         }
     }
@@ -149,8 +149,8 @@ class ResumeViewModel(private val dao: ResumeDao, private val app: Context) : Vi
         if (!needAi()) return
         viewModelScope.launch {
             aiBusy.value = "exp$index"
-            val text = GeminiClient.generateBulletPoints(e.role, e.company, e.description)
-            update { cur -> cur.copy(experience = cur.experience.toMutableList().also { l -> if (index in l.indices) l[index] = l[index].copy(description = text) }) }
+            val text = AiClient.generateBulletPoints(e.role, e.company, e.description)
+            if (text == null) aiFailed() else update { cur -> cur.copy(experience = cur.experience.toMutableList().also { l -> if (index in l.indices) l[index] = l[index].copy(description = text) }) }
             aiBusy.value = null
         }
     }
@@ -161,8 +161,8 @@ class ResumeViewModel(private val dao: ResumeDao, private val app: Context) : Vi
         if (!needAi()) return
         viewModelScope.launch {
             aiBusy.value = "skills"
-            val names = GeminiClient.generateSkillSuggestions(r.jobTitle).split(",").map { it.trim() }.filter { it.isNotBlank() }
-            update { cur ->
+            val names = AiClient.generateSkillSuggestions(r.jobTitle)?.split(",")?.map { it.trim().trimEnd('.') }?.filter { it.isNotBlank() }
+            if (names.isNullOrEmpty()) aiFailed() else update { cur ->
                 val have = cur.skills.map { it.name.lowercase() }.toSet()
                 cur.copy(skills = cur.skills + names.filter { it.lowercase() !in have }.map { SkillEntry(it, "Intermediate", "Technical") })
             }
@@ -190,7 +190,8 @@ class ResumeViewModel(private val dao: ResumeDao, private val app: Context) : Vi
         if (!needAi()) return
         viewModelScope.launch {
             aiBusy.value = "ats"
-            atsAiText.value = GeminiClient.autoFixResume(AtsAnalyzerEngine.resumeToPlainText(r), jobDescription)
+            val text = AiClient.autoFixResume(AtsAnalyzerEngine.resumeToPlainText(r), jobDescription)
+            if (text == null) aiFailed() else atsAiText.value = text
             aiBusy.value = null
         }
     }
@@ -252,7 +253,7 @@ class ResumeViewModel(private val dao: ResumeDao, private val app: Context) : Vi
     fun generateLetter(r: Resume, role: String, company: String, manager: String, tone: String, jd: String) {
         viewModelScope.launch {
             aiBusy.value = "letter"
-            val ai = if (aiAvailable) GeminiClient.generateCoverLetter(AtsAnalyzerEngine.resumeToPlainText(r), jd, role.ifBlank { r.jobTitle }, company, manager, tone) else null
+            val ai = if (aiAvailable) AiClient.generateCoverLetter(AtsAnalyzerEngine.resumeToPlainText(r), jd, role.ifBlank { r.jobTitle }, company, manager, tone) else null
             letterText.value = ai ?: CoverLetter.offlineDraft(r, role, company, manager)
             if (ai == null) say(if (aiAvailable) "AI did not answer, so here is a basic draft you can edit." else "AI is off, so here is a fill-in draft from your resume. Edit it before sending.")
             aiBusy.value = null

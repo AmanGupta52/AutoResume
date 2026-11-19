@@ -3,9 +3,12 @@ package com.example.ui
 import android.content.Context
 import com.example.data.Resume
 
-/** Five extra templates that share one renderer. Input resume must already be HTML-escaped. */
+/** All ten templates share one renderer. Input resume must already be HTML-escaped. */
 object ExtraTemplates {
-    val ids = setOf("Compact Two-Column", "Academic CV", "Classic Serif", "Bold Header", "Timeline")
+    val ids = setOf(
+        "Modern Professional", "Minimal ATS", "Premium Creative", "Developer Resume", "Executive Premium",
+        "Compact Two-Column", "Academic CV", "Classic Serif", "Bold Header", "Timeline",
+    )
 
     private val accents = mapOf("Blue" to "#0A84FF", "Green" to "#30D158", "Cyan" to "#5AC8FA", "Slate" to "#8E8E93", "Dark" to "#1F2937")
 
@@ -78,15 +81,21 @@ object ExtraTemplates {
         val fg = if (dark) "#e5e7eb" else "#1f2937"
         val muted = if (dark) "#9ca3af" else "#4b5563"
         val rule = if (dark) "#374151" else "#d1d5db"
-        val px = when (r.fontSize) { "Compact" -> "10.5"; "Large" -> "12.5"; else -> "11.5" }
-        val serif = tpl == "Academic CV" || tpl == "Classic Serif"
-        val font = if (serif) "'Noto Serif', Georgia, serif" else "Roboto, 'Noto Sans', Arial, sans-serif"
+        val pt = when (r.fontSize) { "Compact" -> "9.8"; "Large" -> "11.4"; else -> "10.4" }
+        val defaultFamily = when (tpl) {
+            "Academic CV", "Classic Serif", "Executive Premium" -> FontLoader.LORA
+            "Minimal ATS", "Compact Two-Column", "Developer Resume" -> FontLoader.SOURCE
+            else -> FontLoader.INTER
+        }
+        val family = FontLoader.familyOfChoice(opts.font) ?: defaultFamily
+        val font = FontLoader.stack(family)
+        val fontFaces = FontLoader.css(context, family)
         val order = if (opts.order == DesignOptions.DEFAULT_ORDER) preferredOrder(tpl) else opts.order
         val name = r.fullName.ifBlank { "Your Name" }
         val contact = listOf(r.email, r.phone, r.location).filter { it.isNotBlank() }
         val links = listOf(link(r.linkedinUrl, "LinkedIn"), link(r.githubUrl, "GitHub"), link(r.portfolioUrl, "Website")).filter { it.isNotBlank() }
         val avatar = ResumeHtmlHelper.getAvatarBase64(context, r.avatarUri)
-        val chips = tpl == "Bold Header" || tpl == "Compact Two-Column" || tpl == "Timeline"
+        val chips = tpl in setOf("Bold Header", "Compact Two-Column", "Timeline", "Premium Creative", "Developer Resume", "Modern Professional")
 
         fun sec(key: String): String {
             val body = sectionBody(key, r, chips)
@@ -99,7 +108,7 @@ object ExtraTemplates {
 @page { size: A4; margin: ${marginMm}mm; }
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
-body { font-family: $font; font-size: ${px}px; line-height: 1.4; color: $fg; background: $bg; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+body { font-family: $font; font-size: ${pt}pt; line-height: 1.38; font-kerning: normal; text-rendering: optimizeLegibility; color: $fg; background: $bg; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 h1 { margin: 0; font-size: 2.1em; line-height: 1.15; }
 h2 { font-size: 1.02em; margin: 14px 0 6px; }
 section { margin-bottom: 4px; }
@@ -117,11 +126,89 @@ li { margin: 0 0 2px; }
 a { color: inherit; text-decoration: none; }
 .chip { display: inline-block; margin: 0 5px 5px 0; padding: 2px 9px; border-radius: 999px; background: ${accent}26; color: $accentText; font-size: .92em; }
 h2, .ttl { break-after: avoid; page-break-after: avoid; }
+.meta span + span::before { white-space: pre; }
 """
 
         val extraCss: String
         val body: String
         when (tpl) {
+            "Modern Professional" -> {
+                extraCss = """
+.head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; padding-bottom: 10px; border-bottom: 3px solid $accent; margin-bottom: 4px; }
+h1 { font-size: 2.3em; font-weight: 700; letter-spacing: -.01em; color: $fg; }
+.role { color: $accentText; font-weight: 600; font-size: 1.12em; margin-top: 3px; }
+.meta { text-align: right; color: $muted; font-size: .94em; line-height: 1.6; }
+.avatar { width: 72px; height: 72px; border-radius: 50%; object-fit: cover; margin-left: 14px; }
+h2 { color: $accentText; text-transform: uppercase; letter-spacing: .12em; font-size: .86em; font-weight: 700; margin: 15px 0 7px; }
+.ttl { font-weight: 600; }
+"""
+                body = "<div class=\"head\"><div style=\"flex:1\"><h1>$name</h1><div class=\"role\">${r.jobTitle}</div></div>" +
+                    "<div class=\"meta\">${contact.joinToString("<br>")}${if (links.isEmpty()) "" else "<br>" + links.joinToString("  ·  ")}</div>" +
+                    (if (avatar != null) "<img class=\"avatar\" src=\"$avatar\">" else "") + "</div>" +
+                    order.joinToString("") { sec(it) }
+            }
+            "Minimal ATS" -> {
+                extraCss = """
+.head { margin-bottom: 6px; }
+h1 { font-size: 2em; font-weight: 700; }
+.role { font-size: 1.1em; margin-top: 1px; }
+.meta { margin-top: 4px; }
+.meta span + span::before { content: "  |  "; color: $muted; }
+h2 { text-transform: uppercase; letter-spacing: .08em; font-size: .95em; font-weight: 700; border-bottom: 1.2px solid $fg; padding-bottom: 2px; margin: 13px 0 6px; }
+.sub { color: $fg; font-style: italic; }
+"""
+                val plainLinks = listOf(r.linkedinUrl, r.githubUrl, r.portfolioUrl).filter { it.isNotBlank() }.map { link(it) }
+                body = "<div class=\"head\"><h1>$name</h1><div class=\"role\">${r.jobTitle}</div>" +
+                    "<div class=\"meta\">${(contact + plainLinks).joinToString("") { "<span>$it</span>" }}</div></div>" +
+                    order.joinToString("") { sec(it) }
+            }
+            "Premium Creative" -> {
+                extraCss = """
+.band { background: ${darken(accent, 0.5f)}; color: #fff; padding: 26px 28px 22px; margin: 0 0 8px; border-radius: 0 0 14px 14px; display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+.band h1 { color: #fff; font-size: 2.5em; font-weight: 700; letter-spacing: -.01em; }
+.band .role { font-size: 1.15em; opacity: .92; margin-top: 3px; font-weight: 500; }
+.band .meta { margin-top: 10px; font-size: .92em; opacity: .95; }
+.band .meta span + span::before { content: "   ·   "; }
+.avatar { width: 90px; height: 90px; border-radius: 50%; object-fit: cover; border: 3px solid rgba(255,255,255,.75); }
+h2 { font-size: 1em; font-weight: 700; color: $fg; margin: 16px 0 7px; padding-left: 10px; border-left: 5px solid $accent; letter-spacing: .04em; text-transform: uppercase; }
+.ttl { font-weight: 600; }
+"""
+                body = "<div class=\"band\"><div><h1>$name</h1><div class=\"role\">${r.jobTitle}</div>" +
+                    "<div class=\"meta\">${(contact + links).joinToString("") { "<span>$it</span>" }}</div></div>" +
+                    (if (avatar != null) "<img class=\"avatar\" src=\"$avatar\">" else "") + "</div>" +
+                    order.joinToString("") { sec(it) }
+            }
+            "Developer Resume" -> {
+                extraCss = """
+.head { background: #0f172a; color: #f8fafc; padding: 20px 24px; border-radius: 8px; margin-bottom: 6px; }
+.head h1 { color: #fff; font-size: 2.1em; font-weight: 700; }
+.head .role { color: ${accent}; font-weight: 600; margin-top: 2px; filter: brightness(1.35); }
+.head .meta { margin-top: 8px; color: #cbd5e1; font-size: .92em; }
+.head .meta span + span::before { content: "  /  "; color: #64748b; }
+h2 { font-size: .92em; font-weight: 700; color: $accentText; text-transform: uppercase; letter-spacing: .1em; border-bottom: 1px solid $rule; padding-bottom: 3px; margin: 14px 0 7px; }
+.when, .sub { font-family: 'Roboto Mono', 'DejaVu Sans Mono', monospace; font-size: .86em; }
+.chip { border-radius: 4px; font-family: 'Roboto Mono', 'DejaVu Sans Mono', monospace; font-size: .84em; }
+.ttl { font-weight: 600; }
+"""
+                body = "<div class=\"head\"><h1>$name</h1><div class=\"role\">${r.jobTitle}</div>" +
+                    "<div class=\"meta\">${(contact + links).joinToString("") { "<span>$it</span>" }}</div></div>" +
+                    order.joinToString("") { sec(it) }
+            }
+            "Executive Premium" -> {
+                extraCss = """
+.head { text-align: center; padding-bottom: 12px; margin-bottom: 8px; border-bottom: 1.5px solid #B08D3C; position: relative; }
+h1 { font-size: 2.2em; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+.role { margin-top: 4px; font-style: italic; color: $muted; font-size: 1.1em; }
+.meta { margin-top: 8px; color: $muted; font-size: .94em; }
+.meta span + span::before { content: "   ◆   "; color: #B08D3C; font-size: .6em; vertical-align: 2px; }
+h2 { font-size: .98em; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: #8A6D2B; border-bottom: 1px solid #B08D3C66; padding-bottom: 3px; margin: 15px 0 7px; }
+.ttl { font-weight: 600; }
+.sub { font-style: italic; }
+"""
+                body = "<div class=\"head\"><h1>$name</h1><div class=\"role\">${r.jobTitle}</div>" +
+                    "<div class=\"meta\">${(contact + links).joinToString("") { "<span>$it</span>" }}</div></div>" +
+                    order.joinToString("") { sec(it) }
+            }
             "Compact Two-Column" -> {
                 extraCss = """
 .page { display: flex; gap: 18px; align-items: flex-start; }
@@ -199,6 +286,6 @@ h2 { color: $accentText; border-bottom: 2px solid $accent; display: inline-block
             }
         }
 
-        return "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>$name</title><style>$css$extraCss</style></head><body>$body</body></html>"
+        return "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>$name</title><style>$fontFaces$css$extraCss</style></head><body>$body</body></html>"
     }
 }

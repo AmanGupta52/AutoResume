@@ -58,7 +58,7 @@ fun SettingsScreen(vm: ResumeViewModel) {
                 Text("AI writing help", style = MaterialTheme.typography.titleMedium)
                 Text(
                     if (vm.aiAvailable) "Connected. Summary, bullet and skill suggestions are available in the editor."
-                    else "Off. Everything else works without it. To turn it on, build the app with a Gemini API key (see the README).",
+                    else "Off. Everything else works without it. To turn it on, build the app with an NVIDIA API key (see the README).",
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -68,7 +68,7 @@ fun SettingsScreen(vm: ResumeViewModel) {
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("Your data", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "Resumes are stored only on this phone. Nothing is uploaded unless you use an AI feature, which sends the text you are working on to Google's Gemini API.",
+                    "Resumes are stored only on this phone. Nothing is uploaded unless you use an AI feature, which sends the text you are working on to NVIDIA's AI API.",
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }

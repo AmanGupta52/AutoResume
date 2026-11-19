@@ -19,7 +19,7 @@ Native Android app (Kotlin, Jetpack Compose, Room) with a soft Neumorphism inter
 - ATS check against a pasted job description: score, keyword gaps, fixes
 - Tailor to a job: tap the missing keywords that are true for you and create a tailored copy; the original stays untouched
 - Writing check: weak phrases ("responsible for"), missing numbers, misspellings, long or short bullets, invalid email
-- Cover letter: written by AI when a Gemini key is set, otherwise a fill-in draft from your resume; exports as a matching PDF
+- Cover letter: written by AI when an NVIDIA key is set, otherwise a fill-in draft from your resume; exports as a matching PDF
 - AI help (optional): summary, bullet points, skill ideas
 
 **App**
@@ -37,7 +37,7 @@ The APK is then attached to the repository's **Releases** page.
 ## Set up GitHub builds
 1. Push this project to a GitHub repository (branch `main`).
 2. Optional, Settings > Secrets and variables > Actions:
-   - `GEMINI_API_KEY` - enables the AI features in the built APK
+   - `NVIDIA_API_KEY` - enables the AI features in the built APK (optional `NVIDIA_MODEL` to pick another free model)
    - `KEYSTORE_BASE64`, `STORE_PASSWORD`, `KEY_PASSWORD` - also builds a signed release APK
      (create the base64 with `base64 -w0 my-upload-key.jks`; key alias must be `upload`)
 3. Every push builds a debug APK automatically. You can also run it by hand from the Actions tab.
@@ -58,7 +58,7 @@ Unit tests run on every push (Actions > "unit-test-report" artifact). Locally: `
 
 ## Build locally
 1. Install Android Studio and open this folder.
-2. Copy `.env.example` to `.env` and set `GEMINI_API_KEY`.
+2. Copy `.env.example` to `.env` and set `NVIDIA_API_KEY` (get a free key at https://build.nvidia.com).
 3. If you have no `debug.keystore`, create one:
    `keytool -genkeypair -keystore debug.keystore -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000`
 4. Run the app on a device or emulator (Android 7.0+, API 24).
@@ -75,6 +75,6 @@ Unit tests run on every push (Actions > "unit-test-report" artifact). Locally: `
 - `ui/ResumePdfHelper.kt`, `android/print/PdfPrint.kt` - HTML to A4 PDF
 - `ui/AtsAnalyzerEngine.kt` - keyword and structure scoring
 - `data/ResumeEntity.kt` - Room database models
-- `api/GeminiClient.kt` - AI requests
+- `api/AiClient.kt` - AI requests (NVIDIA hosted models, OpenAI-compatible API)
 
 Never commit `.env`, keystores or API keys.

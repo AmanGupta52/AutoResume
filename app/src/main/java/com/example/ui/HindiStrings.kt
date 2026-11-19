@@ -164,7 +164,7 @@ val HindiStrings: Map<String, String> = mapOf(
     "Changes the app menus and buttons. Your resume text is never translated." to "ऐप के मेनू और बटन बदलता है। आपके रिज़्यूमे का टेक्स्ट कभी अनुवादित नहीं होता।",
     "AI writing help" to "AI लेखन सहायता",
     "Connected. Summary, bullet and skill suggestions are available in the editor." to "जुड़ा हुआ है। संपादक में सारांश, बुलेट और कौशल के सुझाव उपलब्ध हैं।",
-    "Off. Everything else works without it. To turn it on, build the app with a Gemini API key (see the README)." to "बंद है। बाकी सब कुछ इसके बिना चलता है। चालू करने के लिए ऐप को Gemini API कुंजी के साथ बनाएँ (README देखें)।",
+    "Off. Everything else works without it. To turn it on, build the app with an NVIDIA API key (see the README)." to "बंद है। बाकी सब कुछ इसके बिना चलता है। चालू करने के लिए ऐप को NVIDIA API कुंजी के साथ बनाएँ (README देखें)।",
     "Your data" to "आपका डेटा",
     "Save or share" to "सेव या शेयर करें",
     "Sidebar + main column. Good all-rounder." to "साइडबार + मुख्य कॉलम। हर काम के लिए अच्छा।",
