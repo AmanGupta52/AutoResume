@@ -30,6 +30,10 @@ jobs:
           # An earlier upload added .png icons next to the .webp ones; Android rejects duplicates.
           rm -f ../../../../res/mipmap-*/ic_launcher*.png
 
+      # Replaced by api/AiClient.kt (NVIDIA). Copying new files over a repo does not delete old ones.
+      - name: Remove old Gemini client
+        run: rm -f app/src/main/java/com/example/api/GeminiClient.kt
+
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
