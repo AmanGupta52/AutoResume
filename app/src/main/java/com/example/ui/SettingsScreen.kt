@@ -54,12 +54,24 @@ fun SettingsScreen(vm: ResumeViewModel) {
         }
 
         SoftCard(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            val aiOn by vm.aiAvailableFlow.collectAsState()
+            var keyInput by remember { mutableStateOf("") }
+            var saved by remember { mutableStateOf(vm.hasSavedKey()) }
+            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("AI writing help", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    if (vm.aiAvailable) "Connected. Summary, bullet and skill suggestions are available in the editor."
-                    else "Off. Everything else works without it. To turn it on, build the app with an NVIDIA API key (see the README).",
+                    if (aiOn) "On. Suggestions, summary, bullets, skills and the Ask AI helper are available in the editor."
+                    else "Off. Everything else works without it. Paste a free NVIDIA key below to turn it on.",
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Field("NVIDIA API key", keyInput, { keyInput = it }, placeholder = "nvapi-...", keyboard = androidx.compose.ui.text.input.KeyboardType.Password)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { vm.setApiKey(keyInput); keyInput = ""; saved = vm.hasSavedKey() }, enabled = keyInput.isNotBlank(), shape = MaterialTheme.shapes.small) { Text("Save key") }
+                    if (saved) OutlinedButton(onClick = { vm.setApiKey(""); saved = false }, shape = MaterialTheme.shapes.small) { Text("Remove key") }
+                }
+                Text(
+                    "Get a free key at build.nvidia.com. It is stored only on this phone.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }

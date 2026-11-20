@@ -64,8 +64,12 @@ fun AppRoot(vm: ResumeViewModel) {
             if (res == SnackbarResult.ActionPerformed) m.onAction?.invoke()
         }
     }
-    BackHandler(enabled = screen == Screen.EDITOR || screen == Screen.PREVIEW) {
-        if (screen == Screen.PREVIEW) vm.go(Screen.EDITOR) else vm.closeEditor()
+    BackHandler(enabled = screen == Screen.EDITOR || screen == Screen.PREVIEW || screen == Screen.GUIDED) {
+        when (screen) {
+            Screen.PREVIEW -> vm.go(Screen.EDITOR)
+            Screen.GUIDED -> if (vm.guidedStep.value > 0) vm.guidedStep.value -= 1 else vm.go(Screen.EDITOR)
+            else -> vm.closeEditor()
+        }
     }
 
     if (onboarding) {
@@ -93,7 +97,13 @@ fun AppRoot(vm: ResumeViewModel) {
                 Screen.SETTINGS -> SettingsScreen(vm)
                 Screen.EDITOR -> EditorScreen(vm)
                 Screen.PREVIEW -> PreviewScreen(vm)
+                Screen.GUIDED -> GuidedScreen(vm)
             }
         }
     }
+
+    // AI layers that can appear over any screen
+    AiProposalSheet(vm)
+    AiChatSheet(vm)
+    AiSetupDialog(vm)
 }

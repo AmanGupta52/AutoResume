@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -40,7 +41,7 @@ import com.example.ui.theme.ResumeAccents
 private fun <T> List<T>.replaceAt(i: Int, v: T) = toMutableList().also { if (i in it.indices) it[i] = v }
 private fun <T> List<T>.removeAtIdx(i: Int) = toMutableList().also { if (i in it.indices) it.removeAt(i) }
 
-private val Tabs = listOf("Basics", "Summary", "Experience", "Education", "Skills", "Projects", "More", "Design", "Check")
+private val Tabs = EditorTabNames
 
 private fun tabDone(i: Int, r: Resume): Boolean = when (i) {
     0 -> r.fullName.isNotBlank() && r.jobTitle.isNotBlank() && r.email.isNotBlank()
@@ -60,7 +61,18 @@ fun EditorScreen(vm: ResumeViewModel) {
     val pager = rememberPagerState { Tabs.size }
     val scope = rememberCoroutineScope()
     val (strength, nextStep) = vm.strength(resume)
+    val next = ResumeCoach.nextStep(resume)
     val ok = Color(0xFF16A34A)
+    val aiOn by vm.aiAvailableFlow.collectAsState()
+    val target = TargetJob.parse(resume)
+    var showTarget by remember { mutableStateOf(false) }
+    var live by remember { mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val liveHtml = remember(resume, live) { if (live) ResumeHtmlHelper.generateHtml(context, resume, false, forPreview = false, thumbnail = true) else "" }
+
+    // the AI is always told which tab the person is on
+    LaunchedEffect(pager.currentPage) { vm.editorTab.value = pager.currentPage }
+    if (showTarget) TargetJobDialog(target, onSave = { vm.setTarget(it); showTarget = false }, onDismiss = { showTarget = false })
 
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
@@ -70,7 +82,25 @@ fun EditorScreen(vm: ResumeViewModel) {
                     Text(resume.name.ifBlank { "Untitled resume" }, style = MaterialTheme.typography.titleMedium, maxLines = 1)
                     Text("Saved automatically", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+                IconButton(onClick = { live = !live }) {
+                    Icon(if (live) Icons.Filled.VisibilityOff else Icons.Filled.Visibility, contentDescription = if (live) "Hide live preview" else "Show live preview")
+                }
+                IconButton(onClick = { vm.openGuided(resume) }) { Icon(Icons.Filled.Checklist, contentDescription = "Step-by-step mode") }
             }
+
+            // the job this resume is for: every AI feature uses it
+            AssistChip(
+                onClick = { showTarget = true },
+                label = { Text(if (target.isSet) "Applying for: ${target.title.ifBlank { "pasted job" }}" else "Which job are you applying for?", maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
+                leadingIcon = { Icon(Icons.Filled.Work, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                trailingIcon = { Icon(Icons.Filled.Edit, contentDescription = "Edit target job", modifier = Modifier.size(16.dp)) },
+                modifier = Modifier.padding(horizontal = 16.dp),
+            )
+
+            if (live) Box(
+                Modifier.fillMaxWidth().height(230.dp).padding(horizontal = 16.dp, vertical = 6.dp)
+                    .clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surfaceVariant),
+            ) { ResumeMiniPreview(liveHtml, Modifier.fillMaxSize()) }
 
             Column(Modifier.padding(horizontal = 20.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 LinearProgressIndicator(
@@ -79,10 +109,15 @@ fun EditorScreen(vm: ResumeViewModel) {
                     trackColor = MaterialTheme.colorScheme.surfaceVariant,
                     strokeCap = androidx.compose.ui.graphics.StrokeCap.Round,
                 )
-                Text(
-                    if (nextStep == null) "Resume strength $strength% - looking complete" else "Resume strength $strength% - $nextStep",
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Text("Resume strength $strength%", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (next != null) TextButton(
+                    onClick = { scope.launch { pager.animateScrollToPage(next.tab) } },
+                    contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp),
+                ) {
+                    Text("Next step: ${next.label}", style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    Spacer(Modifier.width(4.dp))
+                    Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(16.dp))
+                }
             }
 
             ScrollableTabRow(
@@ -114,6 +149,7 @@ fun EditorScreen(vm: ResumeViewModel) {
                         .padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 100.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
+                    SuggestionStrip(vm, page, resume, onGoTab = { t -> scope.launch { pager.animateScrollToPage(t) } }, onEditTarget = { showTarget = true })
                     when (page) {
                         0 -> BasicsTab(vm, resume)
                         1 -> SummaryTab(vm, resume)
@@ -128,14 +164,20 @@ fun EditorScreen(vm: ResumeViewModel) {
                 }
             }
         }
-        ExtendedFloatingActionButton(
-            onClick = { vm.go(Screen.PREVIEW) },
-            icon = { Icon(Icons.Filled.Visibility, contentDescription = null) },
-            text = { Text("Preview") },
-            containerColor = MaterialTheme.colorScheme.primary,
-            contentColor = MaterialTheme.colorScheme.onPrimary,
-            modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp),
-        )
+        Column(Modifier.align(Alignment.BottomEnd).padding(20.dp), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (aiOn) SmallFloatingActionButton(
+                onClick = { vm.openChat() },
+                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+            ) { Icon(Icons.Filled.AutoAwesome, contentDescription = "Ask AI") }
+            ExtendedFloatingActionButton(
+                onClick = { vm.go(Screen.PREVIEW) },
+                icon = { Icon(Icons.Filled.Visibility, contentDescription = null) },
+                text = { Text("Preview") },
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+            )
+        }
     }
 }
 
@@ -208,7 +250,7 @@ private fun SummaryTab(vm: ResumeViewModel, r: Resume) {
     FilledTonalButton(onClick = { vm.aiSummary() }, enabled = busy == null, modifier = Modifier.fillMaxWidth().height(48.dp), shape = MaterialTheme.shapes.small) {
         Icon(Icons.Filled.AutoAwesome, contentDescription = null)
         Spacer(Modifier.width(8.dp))
-        Text(if (busy == "summary") "Writing..." else "Write it for me")
+        Text(if (busy == "summary") "Writing your summary..." else "Write it for me")
     }
 }
 
@@ -234,7 +276,7 @@ private fun ExperienceTab(vm: ResumeViewModel, r: Resume) {
             TextButton(onClick = { vm.aiBullets(i) }, enabled = busy == null && e.role.isNotBlank()) {
                 Icon(Icons.Filled.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
-                Text(if (busy == "exp$i") "Writing..." else "Suggest bullets")
+                Text(if (busy == "exp$i") "Writing your bullets..." else "Suggest bullets")
             }
         }
     }

@@ -33,3 +33,11 @@ existing `fontSize` column, so there is no database migration and existing resum
 - Type is set in points (10.4 pt body by default, A4) instead of tiny pixel sizes, with proper heading hierarchy and spacing.
 - Bundled fonts (Inter, Source Sans 3, Lora; SIL Open Font License) in `assets/fonts`, embedded into the HTML so preview, print and PDF look the same on every phone. Font choice in the editor: Default (the template's own), Inter, Source Sans, Lora.
 - AI now uses NVIDIA's hosted models (`api/AiClient.kt`, OpenAI-compatible API). Set `NVIDIA_API_KEY` (and optionally `NVIDIA_MODEL`) in `.env` or as GitHub secrets. On failure the app says so instead of inserting placeholder text.
+
+## AI and user experience update
+- `api/AiClient.kt`: typed errors (`AiError`), streaming, optional key typed in Settings
+- `ui/AiAssist.kt`: context package, prompts, number guard, offline suggestions, template picker
+- `ui/AiSheets.kt`: target job dialog, suggestion strip, preview-before-apply sheet, Ask AI chat
+- `ui/GuidedScreen.kt`: step-by-step first resume
+- `ui/TargetJob.kt`: target job stored in the unused `atsFeedback` column (no database migration, nothing is wiped)
+- Editor: target job chip, tappable "Next step", live preview toggle, Ask AI button, suggestions on every tab

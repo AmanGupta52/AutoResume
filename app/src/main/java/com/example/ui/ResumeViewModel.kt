@@ -9,15 +9,19 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.api.AiClient
+import com.example.api.AiError
+import com.example.api.AiMessage
+import com.example.api.AiResult
 import com.example.data.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
-enum class Screen { RESUMES, ATS, LETTER, SETTINGS, EDITOR, PREVIEW }
+enum class Screen { RESUMES, ATS, LETTER, SETTINGS, EDITOR, PREVIEW, GUIDED }
 
 /** One-line message for the snackbar, optionally with an action such as Undo. */
 data class UiMessage(val text: String, val actionLabel: String? = null, val onAction: (() -> Unit)? = null)
@@ -42,8 +46,27 @@ class ResumeViewModel(private val dao: ResumeDao, private val app: Context) : Vi
     val letterText = MutableStateFlow("")
     val jobDescription = MutableStateFlow("")
 
-    val aiAvailable: Boolean = AiClient.isConfigured
+    val aiAvailableFlow = MutableStateFlow(AiClient.isConfigured)
+    val aiAvailable: Boolean get() = aiAvailableFlow.value
+    /** Which AI job is running ("summary", "exp0", "skills", "advice", "ats", "letter"), or null. */
     val aiBusy = MutableStateFlow<String?>(null)
+
+    /** Tab the person is on in the editor. The AI is told this before every request. */
+    val editorTab = MutableStateFlow(0)
+    /** AI text waiting for the person to accept it. Nothing changes in the resume until then. */
+    val proposal = MutableStateFlow<AiProposal?>(null)
+    private var aiSeq = 0
+    private var aiJob: Job? = null
+
+    // chat helper
+    val showChat = MutableStateFlow(false)
+    val chat = MutableStateFlow<List<AiMessage>>(emptyList())
+    val chatStream = MutableStateFlow<String?>(null)
+    val chatError = MutableStateFlow<AiError?>(null)
+    private var chatJob: Job? = null
+
+    val showAiSetup = MutableStateFlow(false)
+    val guidedStep = MutableStateFlow(0)
 
     val atsResult = MutableStateFlow<AtsScanData?>(null)
     val atsAiText = MutableStateFlow("")
@@ -52,6 +75,9 @@ class ResumeViewModel(private val dao: ResumeDao, private val app: Context) : Vi
 
     init {
         Lang.code = language.value
+        AiClient.keyOverride = prefs.getString("nvidia_key", "") ?: ""
+        aiAvailableFlow.value = AiClient.isConfigured
+        if (!showOnboarding.value) maybeShowAiSetup()
         viewModelScope.launch {
             saveTrigger.debounce(500).collect { saveNow() }
         }
@@ -61,12 +87,22 @@ class ResumeViewModel(private val dao: ResumeDao, private val app: Context) : Vi
     fun go(s: Screen) { screen.value = s }
 
     fun openEditor(r: Resume) {
+        resetAi()
         draft.value = r
+        editorTab.value = 0
         screen.value = Screen.EDITOR
+    }
+
+    fun openGuided(r: Resume) {
+        resetAi()
+        draft.value = r
+        guidedStep.value = 0
+        screen.value = Screen.GUIDED
     }
 
     fun closeEditor() {
         saveNow()
+        resetAi()
         draft.value = null
         screen.value = Screen.RESUMES
     }
@@ -77,7 +113,7 @@ class ResumeViewModel(private val dao: ResumeDao, private val app: Context) : Vi
             val base = if (withSample) sampleResume() else Resume()
             val r = base.copy(name = name.ifBlank { "Untitled resume" })
             val id = dao.insertResume(r).toInt()
-            openEditor(r.copy(id = id))
+            if (withSample) openEditor(r.copy(id = id)) else openGuided(r.copy(id = id))
         }
     }
 
@@ -119,55 +155,238 @@ class ResumeViewModel(private val dao: ResumeDao, private val app: Context) : Vi
         }
     }
 
-    // ---------- AI (never inserts fake text when no key is configured) ----------
+    // ---------- AI (never inserts fake text; the person accepts every change) ----------
+    private fun resetAi() {
+        aiSeq++
+        aiJob?.cancel(); chatJob?.cancel()
+        aiBusy.value = null
+        proposal.value = null
+        chat.value = emptyList(); chatStream.value = null; chatError.value = null
+        showChat.value = false
+    }
+
     private fun needAi(): Boolean {
         if (!aiAvailable) {
-            say("AI is off. Add NVIDIA_API_KEY to enable it (see README).")
+            say(AiError.NO_KEY.message)
             return false
         }
         return true
     }
 
-    private fun aiFailed() = say("The AI did not answer. Check your internet connection and NVIDIA_API_KEY, then try again.")
+    private fun failed(e: AiError) = say(e.message)
 
-    fun aiSummary() {
+    fun setApiKey(key: String) {
+        val k = key.trim()
+        prefs.edit().putString("nvidia_key", k).apply()
+        AiClient.keyOverride = k
+        aiAvailableFlow.value = AiClient.isConfigured
+        say(if (k.isBlank()) "Key removed." else "Key saved. AI help is on.")
+    }
+
+    fun hasSavedKey(): Boolean = !prefs.getString("nvidia_key", "").isNullOrBlank()
+
+    private fun maybeShowAiSetup() {
+        if (!aiAvailable && !prefs.getBoolean("ai_setup_seen", false)) showAiSetup.value = true
+    }
+
+    fun dismissAiSetup() {
+        prefs.edit().putBoolean("ai_setup_seen", true).apply()
+        showAiSetup.value = false
+    }
+
+    private fun busyKey(req: AiRequest) = when (req.kind) {
+        ProposalKind.SUMMARY -> "summary"
+        ProposalKind.BULLETS -> "exp${req.index}"
+        ProposalKind.SKILLS -> "skills"
+        ProposalKind.ADVICE -> "advice"
+    }
+
+    private fun proposalTitle(req: AiRequest, r: Resume) = when (req.kind) {
+        ProposalKind.SUMMARY -> "Summary"
+        ProposalKind.BULLETS -> r.experience.getOrNull(req.index)
+            ?.let { "Job ${req.index + 1}" + if (it.role.isNotBlank()) " - ${it.role}" else "" } ?: "Achievements"
+        ProposalKind.SKILLS -> "Skills for your target job"
+        ProposalKind.ADVICE -> "Fixes for the top problems"
+    }
+
+    private fun currentText(req: AiRequest, r: Resume) = when (req.kind) {
+        ProposalKind.SUMMARY -> r.summary
+        ProposalKind.BULLETS -> r.experience.getOrNull(req.index)?.description.orEmpty()
+        else -> ""
+    }
+
+    private fun tabFor(req: AiRequest) = when (req.kind) {
+        ProposalKind.SUMMARY -> "Summary"
+        ProposalKind.BULLETS -> "Experience"
+        ProposalKind.SKILLS -> "Skills"
+        ProposalKind.ADVICE -> "Check"
+    }
+
+    /** Starts an AI request. The answer streams into a preview sheet; nothing is applied yet. */
+    fun ask(req: AiRequest) {
         val r = draft.value ?: return
-        if (!needAi()) return
-        viewModelScope.launch {
-            aiBusy.value = "summary"
-            val skills = r.skills.joinToString { it.name }
-            val exp = r.experience.joinToString("; ") { "${it.role} at ${it.company}" }
-            val text = AiClient.generateSummary(r.jobTitle.ifBlank { "professional" }, skills, exp)
-            if (text == null) aiFailed() else update { it.copy(summary = text) }
-            aiBusy.value = null
+        if (req.kind == ProposalKind.BULLETS && r.experience.getOrNull(req.index)?.role.isNullOrBlank()) {
+            say("Add the job title for this job first."); return
+        }
+        val before = currentText(req, r)
+        proposal.value = AiProposal(req, proposalTitle(req, r), before)
+        if (!aiAvailable) {
+            proposal.update { it?.copy(loading = false, error = AiError.NO_KEY) }
+            return
+        }
+        startAi(if (req.tweak != null) before else "")
+    }
+
+    private fun startAi(base: String) {
+        val p = proposal.value ?: return
+        val r = draft.value ?: return
+        val keep = p.text // an error never throws away the last good answer
+        aiJob?.cancel()
+        val my = ++aiSeq
+        aiBusy.value = busyKey(p.request)
+        proposal.value = p.copy(base = base, text = "", loading = true, error = null, errorDetail = null)
+        aiJob = viewModelScope.launch {
+            try {
+                val problems = if (p.request.kind == ProposalKind.ADVICE)
+                    WritingCheck.analyze(r).take(3).joinToString("\n") { "- ${it.where}: ${it.problem} ${it.fix}" } else ""
+                val msgs = listOf(
+                    AiMessage("system", AiPrompts.system(p.request)),
+                    AiMessage("user", AiPrompts.user(p.request, r, tabFor(p.request), base, problems)),
+                )
+                val res = AiClient.stream(msgs, maxTokens = if (p.request.kind == ProposalKind.ADVICE) 900 else 450) { t ->
+                    if (my == aiSeq) proposal.update { cur -> if (cur != null && cur.loading) cur.copy(text = t) else cur }
+                }
+                if (my == aiSeq) when (res) {
+                    is AiResult.Ok -> proposal.update { it?.copy(text = res.text, loading = false) }
+                    is AiResult.Fail -> proposal.update { it?.copy(text = keep, loading = false, error = res.error, errorDetail = res.detail) }
+                }
+            } finally {
+                if (my == aiSeq) aiBusy.value = null
+            }
         }
     }
 
-    fun aiBullets(index: Int) {
-        val r = draft.value ?: return
-        val e = r.experience.getOrNull(index) ?: return
-        if (!needAi()) return
-        viewModelScope.launch {
-            aiBusy.value = "exp$index"
-            val text = AiClient.generateBulletPoints(e.role, e.company, e.description)
-            if (text == null) aiFailed() else update { cur -> cur.copy(experience = cur.experience.toMutableList().also { l -> if (index in l.indices) l[index] = l[index].copy(description = text) }) }
-            aiBusy.value = null
+    /** Same request again, for a new variation (or after an error). */
+    fun retryProposal() {
+        val p = proposal.value ?: return
+        if (p.loading) return
+        if (!aiAvailable) { proposal.update { it?.copy(error = AiError.NO_KEY) }; return }
+        startAi(p.base)
+    }
+
+    /** Shorter / stronger / more formal, applied to the text now in the sheet. */
+    fun tweakProposal(t: Tweak) {
+        val p = proposal.value ?: return
+        if (p.loading || !aiAvailable) return
+        val basis = p.text.ifBlank { p.before }
+        proposal.value = p.copy(request = p.request.copy(tweak = t))
+        startAi(basis)
+    }
+
+    fun editProposalText(text: String) = proposal.update { it?.copy(text = text) }
+
+    fun closeProposal() {
+        aiSeq++
+        aiJob?.cancel()
+        aiBusy.value = null
+        proposal.value = null
+    }
+
+    private fun parseSkills(text: String): List<String> =
+        text.split(",", "\n").map { it.trim().trimStart('•', '-', '*').trim().trimEnd('.') }
+            .filter { it.isNotBlank() && it.length <= 40 }
+
+    fun proposalSkills(text: String): List<String> = parseSkills(text)
+
+    /** The person tapped "Use this". [skills] is the chosen subset when the proposal is a skills list. */
+    fun applyProposal(skills: List<String>? = null) {
+        val p = proposal.value ?: return
+        if (p.loading || p.text.isBlank() || p.request.kind == ProposalKind.ADVICE) return
+        val before = draft.value
+        val text = p.text.trim()
+        val idx = p.request.index
+        when (p.request.kind) {
+            ProposalKind.SUMMARY -> update { it.copy(summary = text) }
+            ProposalKind.BULLETS -> update { cur ->
+                cur.copy(experience = cur.experience.toMutableList().also { l ->
+                    if (idx in l.indices) l[idx] = l[idx].copy(description = text)
+                })
+            }
+            ProposalKind.SKILLS -> {
+                val names = skills ?: parseSkills(text)
+                update { cur ->
+                    val have = cur.skills.map { it.name.lowercase() }.toSet()
+                    cur.copy(skills = cur.skills + names.filter { it.lowercase() !in have }.map { SkillEntry(it, "Intermediate", "Technical") })
+                }
+            }
+            ProposalKind.ADVICE -> {}
+        }
+        closeProposal()
+        message.value = UiMessage("Added to your resume", "Undo") {
+            draft.value = before
+            saveTrigger.tryEmit(Unit)
         }
     }
 
+    fun aiSummary() = ask(AiRequest(ProposalKind.SUMMARY))
+    fun aiBullets(index: Int) = ask(AiRequest(ProposalKind.BULLETS, index))
     fun aiSkills() {
         val r = draft.value ?: return
-        if (r.jobTitle.isBlank()) { say("Add your job title first."); return }
-        if (!needAi()) return
-        viewModelScope.launch {
-            aiBusy.value = "skills"
-            val names = AiClient.generateSkillSuggestions(r.jobTitle)?.split(",")?.map { it.trim().trimEnd('.') }?.filter { it.isNotBlank() }
-            if (names.isNullOrEmpty()) aiFailed() else update { cur ->
-                val have = cur.skills.map { it.name.lowercase() }.toSet()
-                cur.copy(skills = cur.skills + names.filter { it.lowercase() !in have }.map { SkillEntry(it, "Intermediate", "Technical") })
+        if (r.jobTitle.isBlank() && !TargetJob.parse(r).isSet) { say("Add your job title or target job first."); return }
+        ask(AiRequest(ProposalKind.SKILLS))
+    }
+
+    // ---------- target job ----------
+    fun setTarget(t: TargetJob) = update { it.withTarget(t) }
+
+    fun applySmartTemplateIfDefault() {
+        val r = draft.value ?: return
+        if (r.templateId != "Modern Professional") return
+        val t = TargetJob.parse(r)
+        val (name, _) = ResumeCoach.templateFor(t.title.ifBlank { r.jobTitle }, t.description)
+        if (name != r.templateId) update { it.copy(templateId = name) }
+    }
+
+    // ---------- chat helper ----------
+    fun openChat() { showChat.value = true }
+    fun closeChat() { showChat.value = false }
+    fun clearChat() { chatJob?.cancel(); chat.value = emptyList(); chatStream.value = null; chatError.value = null }
+
+    fun sendChat(text: String) {
+        val r = draft.value ?: return
+        val t = text.trim()
+        if (t.isEmpty() || chatStream.value != null) return
+        chatError.value = null
+        chat.update { it + AiMessage("user", t) }
+        if (!aiAvailable) { chatError.value = AiError.NO_KEY; return }
+        chatStream.value = ""
+        val tab = if (screen.value == Screen.GUIDED) "Guided" else EditorTabNames.getOrElse(editorTab.value) { "Basics" }
+        chatJob = viewModelScope.launch {
+            try {
+                val history = chat.value.takeLast(8)
+                val msgs = listOf(AiMessage("system", AiPrompts.chatSystem(tab, draft.value ?: r))) + history
+                when (val res = AiClient.stream(msgs, maxTokens = 600, temperature = 0.5) { chatStream.value = it }) {
+                    is AiResult.Ok -> chat.update { it + AiMessage("assistant", res.text) }
+                    is AiResult.Fail -> chatError.value = res.error
+                }
+            } finally {
+                chatStream.value = null
             }
-            aiBusy.value = null
         }
+    }
+
+    fun stopChat() {
+        val partial = chatStream.value.orEmpty()
+        chatJob?.cancel()
+        chatStream.value = null
+        if (partial.isNotBlank()) chat.update { it + AiMessage("assistant", partial) }
+    }
+
+    fun retryChat() {
+        val last = chat.value.lastOrNull() ?: return
+        if (last.role != "user") return
+        chat.update { it.dropLast(1) }
+        sendChat(last.content)
     }
 
     // ---------- ATS ----------
@@ -190,8 +409,14 @@ class ResumeViewModel(private val dao: ResumeDao, private val app: Context) : Vi
         if (!needAi()) return
         viewModelScope.launch {
             aiBusy.value = "ats"
-            val text = AiClient.autoFixResume(AtsAnalyzerEngine.resumeToPlainText(r), jobDescription)
-            if (text == null) aiFailed() else atsAiText.value = text
+            val system = "You are an ATS optimisation expert. Compare the resume with the job description and give: " +
+                "1) a rewritten professional summary, 2) up to 5 concrete bullet rewrites that naturally include missing keywords. " +
+                "Use ONLY facts present in the resume; never invent numbers. Plain text, no markdown."
+            val user = "${AiContext.block("ATS", r)}\n\nJOB DESCRIPTION TO MATCH:\n$jobDescription"
+            when (val res = AiClient.ask(system, user, 900)) {
+                is AiResult.Ok -> atsAiText.value = res.text
+                is AiResult.Fail -> failed(res.error)
+            }
             aiBusy.value = null
         }
     }
@@ -215,11 +440,13 @@ class ResumeViewModel(private val dao: ResumeDao, private val app: Context) : Vi
     fun finishOnboarding(name: String, job: String, email: String) {
         prefs.edit().putBoolean("onboarded", true).apply()
         showOnboarding.value = false
+        maybeShowAiSetup()
         if (name.isBlank() && job.isBlank()) return
         viewModelScope.launch {
             val r = Resume(name = "My resume", fullName = name.trim(), jobTitle = job.trim(), email = email.trim())
+                .withTarget(TargetJob(title = job.trim()))
             val id = dao.insertResume(r).toInt()
-            openEditor(r.copy(id = id))
+            openGuided(r.copy(id = id))
         }
     }
 
@@ -253,9 +480,23 @@ class ResumeViewModel(private val dao: ResumeDao, private val app: Context) : Vi
     fun generateLetter(r: Resume, role: String, company: String, manager: String, tone: String, jd: String) {
         viewModelScope.launch {
             aiBusy.value = "letter"
-            val ai = if (aiAvailable) AiClient.generateCoverLetter(AtsAnalyzerEngine.resumeToPlainText(r), jd, role.ifBlank { r.jobTitle }, company, manager, tone) else null
-            letterText.value = ai ?: CoverLetter.offlineDraft(r, role, company, manager)
-            if (ai == null) say(if (aiAvailable) "AI did not answer, so here is a basic draft you can edit." else "AI is off, so here is a fill-in draft from your resume. Edit it before sending.")
+            val target = TargetJob.parse(r)
+            val useRole = role.ifBlank { target.title.ifBlank { r.jobTitle } }
+            val useJd = jd.ifBlank { target.description }
+            var ai: String? = null
+            var err: AiError? = null
+            if (aiAvailable) {
+                val system = "You write honest, specific cover letters. Use ONLY facts that appear in the resume; never invent employers, numbers or skills. " +
+                    "Plain text, no markdown, no placeholders in brackets. Return only the letter."
+                val user = "Write a cover letter for the role '$useRole' at '${company.ifBlank { "the company" }}', addressed to '${manager.ifBlank { "Hiring Manager" }}'. " +
+                    "Tone: $tone. Length: 220-300 words, 3 short paragraphs plus sign-off.\n\nRESUME:\n${AtsAnalyzerEngine.resumeToPlainText(r)}\n\nJOB DESCRIPTION:\n$useJd"
+                when (val res = AiClient.ask(system, user, 700, 0.5)) {
+                    is AiResult.Ok -> ai = res.text
+                    is AiResult.Fail -> err = res.error
+                }
+            }
+            letterText.value = ai ?: CoverLetter.offlineDraft(r, useRole, company, manager)
+            if (ai == null) say(if (aiAvailable) "${err?.message ?: "AI did not answer."} Here is a basic draft you can edit." else "AI is off, so here is a fill-in draft from your resume. Edit it before sending.")
             aiBusy.value = null
         }
     }
@@ -291,18 +532,5 @@ class ResumeViewModel(private val dao: ResumeDao, private val app: Context) : Vi
     )
 
     /** 0-100 and the single most useful next step. */
-    fun strength(r: Resume): Pair<Int, String?> {
-        val checks = listOf(
-            (r.fullName.isNotBlank() && r.jobTitle.isNotBlank()) to "Add your name and job title",
-            (r.email.isNotBlank() && r.phone.isNotBlank()) to "Add email and phone",
-            (r.summary.length >= 60) to "Write a summary of at least two sentences",
-            r.experience.isNotEmpty() to "Add your work experience",
-            r.experience.all { it.description.length >= 40 } to "Describe achievements for every job",
-            r.education.isNotEmpty() to "Add your education",
-            (r.skills.size >= 5) to "List at least 5 skills",
-            r.location.isNotBlank() to "Add your location",
-        )
-        val done = checks.count { it.first }
-        return (done * 100 / checks.size) to checks.firstOrNull { !it.first }?.second
-    }
+    fun strength(r: Resume): Pair<Int, String?> = ResumeCoach.strength(r) to ResumeCoach.nextStep(r)?.label
 }

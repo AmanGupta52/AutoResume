@@ -20,9 +20,18 @@ Native Android app (Kotlin, Jetpack Compose, Room) with a soft Neumorphism inter
 - Tailor to a job: tap the missing keywords that are true for you and create a tailored copy; the original stays untouched
 - Writing check: weak phrases ("responsible for"), missing numbers, misspellings, long or short bullets, invalid email
 - Cover letter: written by AI when an NVIDIA key is set, otherwise a fill-in draft from your resume; exports as a matching PDF
-- AI help (optional): summary, bullet points, skill ideas
+- AI help (optional, NVIDIA free API) that always knows what you are working on:
+  - Every request carries the current tab, your target job, the whole resume and what is still missing
+  - "Which job are you applying for?" on every resume (title + optional job post); all AI features use it
+  - Suggestion cards at the top of every tab (made offline; AI runs only when you tap one)
+  - Preview before applying: Use this / Try again / Cancel, plus Shorter, Stronger, More formal
+  - Numbers the AI adds must be confirmed by you; [bracket] placeholders must be filled in first
+  - Ask AI helper (floating button) with streaming answers; knows the tab and numbers your jobs
+  - Clear errors (no internet, wrong key, rate limit) with Retry; your last AI result is never lost
+  - Paste your NVIDIA key in Settings if the build has none
 
 **App**
+- Step-by-step first resume (one question per screen), next-step button, live preview while editing, template picked from the job
 - First-run onboarding, English and Hindi interface, system / light / dark theme
 - Everything stays on the phone
 
