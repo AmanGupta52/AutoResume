@@ -15,7 +15,7 @@ function publicUser(u) {
   return { id: String(u._id), name: u.name, email: u.email };
 }
 
-function createAuthRouter(config, email) {
+function createAuthRouter(config, email, storage) {
   const router = express.Router();
   const { limits } = config;
 
@@ -146,6 +146,8 @@ function createAuthRouter(config, email) {
     const user = await User.findById(req.user._id).select('+passwordHash');
     const pw = typeof req.body.password === 'string' ? req.body.password : '';
     if (!(await bcrypt.compare(pw, user.passwordHash))) throw new HttpError(401, 'BAD_LOGIN', 'Wrong password.');
+    const withFiles = await Resume.find({ userId: user._id, 'pdf.publicId': { $exists: true, $ne: null } }).select('pdf');
+    await Promise.allSettled(withFiles.map((r) => storage.destroy(r.pdf.publicId)));
     await Resume.deleteMany({ userId: user._id });
     await User.deleteOne({ _id: user._id });
     res.json({ message: 'Your account and all your resumes were deleted.' });

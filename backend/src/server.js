@@ -14,6 +14,8 @@ async function main() {
   mongoose.set('strictQuery', true);
   await mongoose.connect(config.mongoUri, { serverSelectionTimeoutMS: 10000 });
   console.log('MongoDB connected');
+  const cl = config.cloudinary;
+  console.log(cl.cloudName && cl.apiKey && cl.apiSecret ? `PDF storage: Cloudinary (${cl.cloudName})` : 'PDF storage: OFF (set the CLOUDINARY_* variables to turn it on)');
 
   const app = createApp(config);
   const server = app.listen(config.port, () => console.log(`AutoResume API and web app on http://localhost:${config.port}`));

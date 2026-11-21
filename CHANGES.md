@@ -54,3 +54,9 @@ existing `fontSize` column, so there is no database migration and existing resum
 - `web/`: plain-JS web app (login, register, dashboard, editor, live preview, Download PDF in the browser)
 - Android: login/registration screens, two-way sync (`ResumeSync`), PDFs saved on the phone (Downloads/AutoResume)
 - See `FULLSTACK.md` for setup, EmailJS template, deployment and the API
+
+## PDF storage in Cloudinary
+- Backend: `services/cloudinary.js` (signed REST upload/destroy, no SDK), `PUT/DELETE /api/resumes/:id/pdf`, `pdf` link on the resume in MongoDB; files are removed when a resume, its PDF or the account is deleted
+- Web: `js/pdf.js` makes a real text PDF in the browser (4 layouts, links, pages); Download PDF saves a copy and uploads it; the dashboard shows the saved link
+- Android: the exported PDF is saved on the phone and also sent to the account
+- Tests: signing, upload/destroy requests, link checks, and PDF structure (xref table, escaping, pagination)

@@ -2,6 +2,7 @@ import { h, toast, debounce, uid } from './ui.js';
 import { api } from './api.js';
 import { factories, normalize } from './model.js';
 import { printResume } from './print.js';
+import { downloadAndStorePdf, isStoredPdfUrl } from './pdfActions.js';
 import { renderResumeHtml, TEMPLATES, COLORS, SIZES, MARGINS, SECTION_TITLES, parseDesign, encodeDesign, webTemplate } from './templates.js';
 
 const A4_PX = 793.7; // 210 mm at 96 dpi
@@ -68,7 +69,7 @@ function build(root, initial, nav) {
     banner.hidden = false;
     banner.replaceChildren(
       h('span', {}, 'This resume was changed on another device or tab. '),
-      h('button', { class: 'btn small', onclick: () => { resume = normalize(server); conflict = null; banner.hidden = true; paintForm(); paintPreview(); setStatus('Loaded the latest version'); } }, 'Load the latest'),
+      h('button', { class: 'btn small', onclick: () => { resume = normalize(server); conflict = null; banner.hidden = true; paintForm(); paintPreview(); paintPdfLink(); setStatus('Loaded the latest version'); } }, 'Load the latest'),
       h('button', { class: 'btn small', onclick: () => { resume.clientUpdatedAt = server.clientUpdatedAt; conflict = null; banner.hidden = true; changed(); } }, 'Keep mine'));
   }
 
@@ -237,6 +238,23 @@ function build(root, initial, nav) {
     panes.dataset.view = next; viewBtn.textContent = next === 'edit' ? 'Preview' : 'Edit'; if (next === 'preview') setTimeout(fit, 0);
   } }, 'Preview');
 
+  // the PDF: made in the browser, copied to this computer, stored in Cloudinary (MongoDB keeps the link)
+  const pdfLink = h('a', { class: 'link small', target: '_blank', rel: 'noopener noreferrer', hidden: true }, 'Saved PDF');
+  function paintPdfLink() {
+    const ok = resume.pdf && isStoredPdfUrl(resume.pdf.url);
+    pdfLink.hidden = !ok;
+    if (ok) { pdfLink.href = resume.pdf.url; pdfLink.title = 'The PDF stored in your account'; }
+  }
+  const pdfBtn = h('button', { class: 'btn primary small', onclick: async () => {
+    if (!resume.data.fullName.trim()) toast('Tip: add your name first.');
+    pdfBtn.disabled = true; pdfBtn.textContent = 'Making PDF...';
+    try {
+      const stored = await downloadAndStorePdf(resume);
+      if (stored) { resume.pdf = stored; paintPdfLink(); }
+    } finally { pdfBtn.disabled = false; pdfBtn.textContent = 'Download PDF'; }
+  } }, 'Download PDF');
+  paintPdfLink();
+
   const onBeforeUnload = (e) => { if (version > 0 && (saving || status.classList.contains('bad') || status.textContent.startsWith('Unsaved'))) { e.preventDefault(); e.returnValue = ''; } };
   window.addEventListener('beforeunload', onBeforeUnload);
 
@@ -244,7 +262,8 @@ function build(root, initial, nav) {
     h('div', { class: 'bar' },
       h('a', { href: '#/resumes', class: 'btn small' }, '← My resumes'), nameInput, status,
       viewBtn,
-      h('button', { class: 'btn primary small', onclick: () => { if (!resume.data.fullName.trim()) toast('Tip: add your name first.'); printResume(resume); } }, 'Download PDF')),
+      pdfLink, pdfBtn,
+      h('button', { class: 'btn small', title: 'Print, or Save as PDF from the print window', onclick: () => printResume(resume) }, 'Print')),
     banner, panes));
   paintForm();
   paintPreview();

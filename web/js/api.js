@@ -22,10 +22,11 @@ export class ApiError extends Error {
 async function request(method, path, body, auth = true) {
   let res;
   try {
+    const binary = body instanceof Uint8Array; // a PDF file is sent as it is, everything else as JSON
     res = await fetch('/api' + path, {
       method,
-      headers: { 'Content-Type': 'application/json', ...(auth && session.token ? { Authorization: 'Bearer ' + session.token } : {}) },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      headers: { 'Content-Type': binary ? 'application/pdf' : 'application/json', ...(auth && session.token ? { Authorization: 'Bearer ' + session.token } : {}) },
+      body: body === undefined ? undefined : binary ? body : JSON.stringify(body),
     });
   } catch {
     throw new ApiError(0, 'NETWORK', 'Cannot reach the server. Check your internet connection.');
@@ -55,4 +56,6 @@ export const api = {
   createResume: (body) => request('POST', '/resumes', body),
   updateResume: (id, body) => request('PUT', '/resumes/' + encodeURIComponent(id), body),
   deleteResume: (id) => request('DELETE', '/resumes/' + encodeURIComponent(id)),
+  uploadPdf: (id, bytes) => request('PUT', '/resumes/' + encodeURIComponent(id) + '/pdf', bytes),
+  deletePdf: (id) => request('DELETE', '/resumes/' + encodeURIComponent(id) + '/pdf'),
 };

@@ -1,5 +1,16 @@
 'use strict';
 
+/** CLOUDINARY_URL=cloudinary://API_KEY:API_SECRET@CLOUD_NAME, or the three separate variables. */
+function parseCloudinary(env) {
+  let cloudName = env.CLOUDINARY_CLOUD_NAME || '';
+  let apiKey = env.CLOUDINARY_API_KEY || '';
+  let apiSecret = env.CLOUDINARY_API_SECRET || '';
+  const m = /^cloudinary:\/\/([^:\s]+):([^@\s]+)@([^/?\s]+)/.exec(env.CLOUDINARY_URL || '');
+  if (m) { apiKey = apiKey || m[1]; apiSecret = apiSecret || m[2]; cloudName = cloudName || m[3]; }
+  const folder = String(env.CLOUDINARY_FOLDER || 'autoresume').replace(/[^\w/-]/g, '').replace(/^\/+|\/+$/g, '') || 'autoresume';
+  return { cloudName, apiKey, apiSecret, folder };
+}
+
 /** Reads settings from an environment object. Pure, so it can be tested. */
 function loadConfig(env) {
   const list = (v) => String(v || '').split(',').map((s) => s.trim()).filter(Boolean);
@@ -19,7 +30,9 @@ function loadConfig(env) {
       publicKey: env.EMAILJS_PUBLIC_KEY || '',
       privateKey: env.EMAILJS_PRIVATE_KEY || '',
     },
+    cloudinary: parseCloudinary(env),
     limits: {
+      maxPdfBytes: 8 * 1024 * 1024,
       resumesPerUser: 50,
       codeMinutes: 15,
       codeMaxAttempts: 5,
@@ -42,6 +55,9 @@ function configProblems(c) {
   } else if (c.env === 'production') {
     p.push('EMAIL_MODE must be "emailjs" in production, otherwise nobody receives their codes.');
   }
+  const cl = c.cloudinary;
+  const set = [cl.cloudName, cl.apiKey, cl.apiSecret].filter(Boolean).length;
+  if (set > 0 && set < 3) p.push('Cloudinary is half configured: set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET (or CLOUDINARY_URL).');
   return p;
 }
 

@@ -119,6 +119,7 @@ fun PreviewScreen(vm: ResumeViewModel) {
                                             if (where != null) "PDF saved on your phone: $where" else "Could not save a copy on the phone. You can still share it.",
                                             android.widget.Toast.LENGTH_LONG,
                                         ).show()
+                                        vm.storePdf(resume.id, file) // also kept in your account (Cloudinary link in MongoDB)
                                         shareFile(context, file, "application/pdf", "Resume - ${resume.fullName}")
                                     }
                                 }

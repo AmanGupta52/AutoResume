@@ -65,6 +65,9 @@ class ResumeSync(private val dao: ResumeDao, private val prefs: SharedPreference
         prefs.edit().putString(KEY_DELETED, JSONArray(l).toString()).apply()
     }
 
+    /** The account's id for a local resume, or null when it has not been uploaded yet. */
+    fun remoteId(localId: Int): String? = loadLinks()[localId]?.rid?.takeIf { it.isNotEmpty() }
+
     /** Call after a resume is deleted on the phone, so the deletion reaches the account on the next sync. */
     fun noteDeleted(localId: Int) {
         val links = loadLinks()

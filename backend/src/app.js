@@ -5,12 +5,13 @@ const helmet = require('helmet');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 const { createEmailService } = require('./services/email');
+const { createCloudinaryService } = require('./services/cloudinary');
 const { createAuthRouter } = require('./routes/auth');
 const { createResumesRouter } = require('./routes/resumes');
 const { requireAuth } = require('./middleware/auth');
 const { notFound, errorHandler } = require('./middleware/error');
 
-function createApp(config, { email = createEmailService(config) } = {}) {
+function createApp(config, { email = createEmailService(config), storage = createCloudinaryService(config) } = {}) {
   const app = express();
   if (config.trustProxy) app.set('trust proxy', 1);
   app.disable('x-powered-by');
@@ -53,8 +54,8 @@ function createApp(config, { email = createEmailService(config) } = {}) {
   app.use('/api/auth/register', mailLimiter);
   app.use('/api/auth/resend', mailLimiter);
   app.use('/api/auth/forgot', mailLimiter);
-  app.use('/api/auth', authLimiter, createAuthRouter(config, email));
-  app.use('/api/resumes', apiLimiter, createResumesRouter(config, requireAuth(config)));
+  app.use('/api/auth', authLimiter, createAuthRouter(config, email, storage));
+  app.use('/api/resumes', apiLimiter, createResumesRouter(config, requireAuth(config), storage));
   app.use('/api', notFound);
 
   // the web app (plain files, no build step)

@@ -255,6 +255,37 @@ class ResumeViewModel(private val dao: ResumeDao, private val app: Context) : Vi
         dao.insertResume(r.copy(lastModified = System.currentTimeMillis()))
     }
 
+    /**
+     * Sends the PDF the phone just made to the backend, which keeps it in Cloudinary and stores only the link.
+     * The copy on the phone is already saved; this never blocks or removes it.
+     */
+    fun storePdf(localId: Int, file: File) {
+        val t = token()
+        if (t.isBlank() || !BackendClient.isConfigured) return
+        viewModelScope.launch {
+            flushDraft()
+            var rid = sync.remoteId(localId)
+            if (rid == null) { // a brand new resume: upload it first so the PDF has somewhere to belong
+                sync.syncAll(t, draft.value?.id)
+                rid = sync.remoteId(localId)
+            }
+            if (rid == null) {
+                say("PDF saved on the phone. It will be saved to your account once you are online and the resume has synced.")
+                return@launch
+            }
+            val bytes = withContext(Dispatchers.IO) { try { file.readBytes() } catch (e: Exception) { null } }
+            if (bytes == null) { say("Could not read the PDF to send it to your account."); return@launch }
+            when (val r = BackendClient.putBytes("/api/resumes/$rid/pdf", bytes, t)) {
+                is ApiResult.Ok -> say("PDF also saved to your account.")
+                is ApiResult.Fail -> when {
+                    r.unauthorized -> expireSession()
+                    r.code == "PDF_STORAGE_OFF" -> say("PDF saved on the phone. Cloud PDF storage is not set up on the server.")
+                    else -> say("PDF saved on the phone, but not to your account: ${r.message}")
+                }
+            }
+        }
+    }
+
     /** Syncs first, so nothing is lost, then removes the account's resumes from this phone. */
     fun logout() {
         val t = token()

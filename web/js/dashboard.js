@@ -1,7 +1,7 @@
 import { h, toast, timeAgo } from './ui.js';
 import { api, session } from './api.js';
 import { blankData, newRef, normalize } from './model.js';
-import { printResume } from './print.js';
+import { downloadAndStorePdf, isStoredPdfUrl } from './pdfActions.js';
 
 export function renderDashboard(root, nav) {
   const list = h('div', { class: 'grid' }, h('p', { class: 'muted' }, 'Loading your resumes...'));
@@ -37,6 +37,11 @@ export function renderDashboard(root, nav) {
     } catch (e) { toast(e.message, 'error'); }
   }
 
+  async function removePdf(r) {
+    if (!window.confirm('Remove the saved PDF from your account? Your resume stays.')) return;
+    try { await api.deletePdf(r.id); toast('Saved PDF removed.'); load(); } catch (e) { toast(e.message, 'error'); }
+  }
+
   async function remove(r) {
     if (!window.confirm(`Delete "${r.name}"? This cannot be undone.`)) return;
     try { await api.deleteResume(r.id); toast('Deleted.'); load(); } catch (e) { toast(e.message, 'error'); }
@@ -48,9 +53,14 @@ export function renderDashboard(root, nav) {
       h('h2', {}, r.name),
       h('p', { class: 'muted' }, [d.fullName, d.jobTitle].filter(Boolean).join(' · ') || 'Empty resume'),
       h('p', { class: 'muted small' }, `${d.templateId || 'Modern Professional'} · updated ${timeAgo(r.updatedAt)}`),
+      r.pdf && isStoredPdfUrl(r.pdf.url)
+        ? h('p', { class: 'muted small' }, `PDF saved ${timeAgo(r.pdf.uploadedAt)} · `,
+          h('a', { class: 'link', href: r.pdf.url, target: '_blank', rel: 'noopener noreferrer' }, 'Open'), ' · ',
+          h('button', { class: 'link', onclick: () => removePdf(r) }, 'Remove'))
+        : null,
       h('div', { class: 'actions' },
         h('button', { class: 'btn primary', onclick: () => nav('#/edit/' + r.id) }, 'Open'),
-        h('button', { class: 'btn', onclick: () => printResume(normalize(r)) }, 'Download PDF'),
+        h('button', { class: 'btn', onclick: async (e) => { const b = e.currentTarget; b.disabled = true; try { await downloadAndStorePdf(normalize(r)); load(); } finally { b.disabled = false; } } }, 'Download PDF'),
         h('button', { class: 'btn', onclick: () => duplicate(r) }, 'Duplicate'),
         h('button', { class: 'btn danger', onclick: () => remove(r) }, 'Delete')));
   }

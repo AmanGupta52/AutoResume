@@ -1,6 +1,7 @@
 'use strict';
 const express = require('express');
 const mongoose = require('mongoose');
+const rateLimit = require('express-rate-limit');
 const Resume = require('../models/Resume');
 const { HttpError, wrap } = require('../middleware/error');
 const { sanitizeResumeData, cleanTitle } = require('../utils/resumeSchema');
@@ -11,6 +12,7 @@ function view(r) {
     name: r.name,
     data: r.data,
     clientRef: r.clientRef || null,
+    pdf: r.pdf && r.pdf.url ? { url: r.pdf.url, bytes: r.pdf.bytes, uploadedAt: r.pdf.uploadedAt } : null,
     clientUpdatedAt: r.clientUpdatedAt,
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
@@ -26,9 +28,14 @@ function cleanRef(v) {
   return typeof v === 'string' && /^[A-Za-z0-9_-]{8,64}$/.test(v) ? v : undefined;
 }
 
-function createResumesRouter(config, requireAuth) {
+function createResumesRouter(config, requireAuth, storage) {
   const router = express.Router();
   router.use(requireAuth);
+
+  // a failed cleanup in Cloudinary must never break the request: the link is already gone from MongoDB
+  const dropFile = (publicId) => {
+    if (publicId) storage.destroy(publicId).catch((e) => console.error('[cloudinary] cleanup failed:', e.message));
+  };
 
   const findOwn = async (req) => {
     if (!mongoose.isValidObjectId(req.params.id)) throw new HttpError(404, 'NOT_FOUND', 'Resume not found.');
@@ -87,8 +94,40 @@ function createResumesRouter(config, requireAuth) {
 
   router.delete('/:id', wrap(async (req, res) => {
     const doc = await findOwn(req);
+    const publicId = doc.pdf && doc.pdf.publicId;
     await doc.deleteOne();
+    dropFile(publicId);
     res.json({ deleted: true });
+  }));
+
+  // ---- the PDF of a resume: the file goes to Cloudinary, MongoDB keeps the link ----
+  const pdfLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 60, standardHeaders: 'draft-7', legacyHeaders: false,
+    message: { error: 'RATE_LIMIT', message: 'Too many PDF uploads. Please try again later.' } });
+
+  // the body is the PDF itself (Content-Type: application/pdf), not JSON
+  router.put('/:id/pdf', pdfLimiter, express.raw({ type: 'application/pdf', limit: config.limits.maxPdfBytes }), wrap(async (req, res) => {
+    if (!storage.enabled) throw new HttpError(503, 'PDF_STORAGE_OFF', 'PDF storage is not set up on this server.');
+    const doc = await findOwn(req);
+    const body = req.body;
+    if (!Buffer.isBuffer(body) || body.length < 100) {
+      throw new HttpError(400, 'INVALID', 'Send the PDF file as the request body with Content-Type: application/pdf.');
+    }
+    if (body.subarray(0, 5).toString('latin1') !== '%PDF-') throw new HttpError(400, 'INVALID', 'That file is not a PDF.');
+    const up = await storage.uploadPdf({ buffer: body, publicId: storage.newPublicId(String(req.user._id), String(doc._id)) });
+    const previous = doc.pdf && doc.pdf.publicId;
+    doc.pdf = { url: up.url, publicId: up.publicId, bytes: up.bytes, uploadedAt: new Date() };
+    await doc.save();
+    dropFile(previous); // only the latest PDF of a resume is kept
+    res.json({ resume: view(doc) });
+  }));
+
+  router.delete('/:id/pdf', wrap(async (req, res) => {
+    const doc = await findOwn(req);
+    const previous = doc.pdf && doc.pdf.publicId;
+    doc.pdf = null;
+    await doc.save();
+    dropFile(previous);
+    res.json({ resume: view(doc) });
   }));
 
   return router;

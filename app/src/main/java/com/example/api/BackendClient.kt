@@ -30,8 +30,8 @@ sealed class ApiResult {
 object BackendClient {
     private val http = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        .writeTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
+        .writeTimeout(60, TimeUnit.SECONDS)
         .build()
 
     private val json = "application/json".toMediaType()
@@ -41,37 +41,44 @@ object BackendClient {
     val isConfigured: Boolean
         get() = base.startsWith("http") && !base.contains("your-backend") && !base.contains("MY_BACKEND")
 
-    suspend fun call(method: String, path: String, body: JSONObject? = null, token: String? = null): ApiResult =
-        withContext(Dispatchers.IO) {
-            try {
-                val payload: RequestBody? = when (method) {
-                    "GET" -> null
-                    else -> (body ?: JSONObject()).toString().toRequestBody(json)
-                }
-                val req = Request.Builder().url("$base$path")
-                    .header("Accept", "application/json")
-                    .apply { if (!token.isNullOrBlank()) header("Authorization", "Bearer $token") }
-                    .method(method, payload)
-                    .build()
-                http.newCall(req).execute().use { resp ->
-                    val raw = resp.body?.string().orEmpty()
-                    val obj = try { JSONObject(raw) } catch (e: Exception) { JSONObject() }
-                    if (resp.isSuccessful) ApiResult.Ok(obj)
-                    else ApiResult.Fail(
-                        resp.code,
-                        if (obj.has("error")) obj.optString("error", "ERROR") else "ERROR",
-                        if (obj.has("message")) obj.optString("message", "Something went wrong.") else "Something went wrong (HTTP ${resp.code}).",
-                        obj,
-                    )
-                }
-            } catch (e: UnknownHostException) {
-                ApiResult.Fail(0, "NETWORK", "No internet connection.")
-            } catch (e: ConnectException) {
-                ApiResult.Fail(0, "NETWORK", "Cannot reach the server.")
-            } catch (e: SocketTimeoutException) {
-                ApiResult.Fail(0, "NETWORK", "The server took too long to answer.")
-            } catch (e: Exception) {
-                ApiResult.Fail(0, "NETWORK", e.message ?: "Network error.")
-            }
+    private fun builder(path: String, token: String?): Request.Builder =
+        Request.Builder().url("$base$path")
+            .header("Accept", "application/json")
+            .apply { if (!token.isNullOrBlank()) header("Authorization", "Bearer $token") }
+
+    suspend fun call(method: String, path: String, body: JSONObject? = null, token: String? = null): ApiResult {
+        val payload: RequestBody? = when (method) {
+            "GET" -> null
+            else -> (body ?: JSONObject()).toString().toRequestBody(json)
         }
+        return execute { builder(path, token).method(method, payload).build() }
+    }
+
+    /** Sends a file as the request body (used for the PDF), e.g. PUT /api/resumes/{id}/pdf. */
+    suspend fun putBytes(path: String, bytes: ByteArray, token: String, contentType: String = "application/pdf"): ApiResult =
+        execute { builder(path, token).put(bytes.toRequestBody(contentType.toMediaType())).build() }
+
+    private suspend fun execute(makeRequest: () -> Request): ApiResult = withContext(Dispatchers.IO) {
+        try {
+            http.newCall(makeRequest()).execute().use { resp ->
+                val raw = resp.body?.string().orEmpty()
+                val obj = try { JSONObject(raw) } catch (e: Exception) { JSONObject() }
+                if (resp.isSuccessful) ApiResult.Ok(obj)
+                else ApiResult.Fail(
+                    resp.code,
+                    if (obj.has("error")) obj.optString("error", "ERROR") else "ERROR",
+                    if (obj.has("message")) obj.optString("message", "Something went wrong.") else "Something went wrong (HTTP ${resp.code}).",
+                    obj,
+                )
+            }
+        } catch (e: UnknownHostException) {
+            ApiResult.Fail(0, "NETWORK", "No internet connection.")
+        } catch (e: ConnectException) {
+            ApiResult.Fail(0, "NETWORK", "Cannot reach the server.")
+        } catch (e: SocketTimeoutException) {
+            ApiResult.Fail(0, "NETWORK", "The server took too long to answer.")
+        } catch (e: Exception) {
+            ApiResult.Fail(0, "NETWORK", e.message ?: "Network error.")
+        }
+    }
 }
