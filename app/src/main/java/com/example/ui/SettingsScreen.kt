@@ -53,26 +53,40 @@ fun SettingsScreen(vm: ResumeViewModel) {
             }
         }
 
+        if (com.example.api.BackendClient.isConfigured) SoftCard(Modifier.fillMaxWidth()) {
+            val account by vm.auth.collectAsState()
+            val syncText by vm.syncStatus.collectAsState()
+            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Account", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    account?.let { "${it.name}\n${it.email}" } ?: "Not signed in",
+                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    "Your resumes are saved to your account and sync with the web app. PDFs stay on this phone only.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (syncText.isNotBlank()) Text(syncText, style = MaterialTheme.typography.bodySmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { vm.runSync() }, shape = MaterialTheme.shapes.small) { Text("Sync now") }
+                    OutlinedButton(onClick = { vm.logout() }, shape = MaterialTheme.shapes.small) { Text("Sign out") }
+                }
+            }
+        }
+
         SoftCard(Modifier.fillMaxWidth()) {
             val aiOn by vm.aiAvailableFlow.collectAsState()
-            var keyInput by remember { mutableStateOf("") }
-            var saved by remember { mutableStateOf(vm.hasSavedKey()) }
+            val busy by vm.aiBusy.collectAsState()
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("AI writing help", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    if (aiOn) "On. Suggestions, summary, bullets, skills and the Ask AI helper are available in the editor."
-                    else "Off. Everything else works without it. Paste a free NVIDIA key below to turn it on.",
+                    if (aiOn) "On. The key is built into this app. Suggestions, summary, bullets, skills and the Ask AI helper work in the editor."
+                    else "Off. This build has no NVIDIA key. Add NVIDIA_API_KEY to your GitHub secrets and rebuild the app.",
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Field("NVIDIA API key", keyInput, { keyInput = it }, placeholder = "nvapi-...", keyboard = androidx.compose.ui.text.input.KeyboardType.Password)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { vm.setApiKey(keyInput); keyInput = ""; saved = vm.hasSavedKey() }, enabled = keyInput.isNotBlank(), shape = MaterialTheme.shapes.small) { Text("Save key") }
-                    if (saved) OutlinedButton(onClick = { vm.setApiKey(""); saved = false }, shape = MaterialTheme.shapes.small) { Text("Remove key") }
+                if (aiOn) OutlinedButton(onClick = { vm.testAi() }, enabled = busy == null, shape = MaterialTheme.shapes.small) {
+                    Text(if (busy == "test") "Testing..." else "Test AI connection")
                 }
-                Text(
-                    "Get a free key at build.nvidia.com. It is stored only on this phone.",
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
             }
         }
 

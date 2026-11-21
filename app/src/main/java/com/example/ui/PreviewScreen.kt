@@ -112,6 +112,13 @@ fun PreviewScreen(vm: ResumeViewModel) {
                                     if (file == null) android.widget.Toast.makeText(context, "Could not create the PDF. Please try again.", android.widget.Toast.LENGTH_LONG).show()
                                     else {
                                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        // the PDF is kept on this phone only; it is never sent to the server
+                                        val where = LocalFiles.savePdf(context, file)
+                                        android.widget.Toast.makeText(
+                                            context,
+                                            if (where != null) "PDF saved on your phone: $where" else "Could not save a copy on the phone. You can still share it.",
+                                            android.widget.Toast.LENGTH_LONG,
+                                        ).show()
                                         shareFile(context, file, "application/pdf", "Resume - ${resume.fullName}")
                                     }
                                 }

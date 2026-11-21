@@ -28,7 +28,8 @@ Native Android app (Kotlin, Jetpack Compose, Room) with a soft Neumorphism inter
   - Numbers the AI adds must be confirmed by you; [bracket] placeholders must be filled in first
   - Ask AI helper (floating button) with streaming answers; knows the tab and numbers your jobs
   - Clear errors (no internet, wrong key, rate limit) with Retry; your last AI result is never lost
-  - Paste your NVIDIA key in Settings if the build has none
+  - The NVIDIA key is built in from the GitHub secret/variable NVIDIA_API_KEY; the model is picked automatically (retired ones are skipped)
+  - Settings > Test AI connection shows exactly why AI fails, if it does
 
 **App**
 - Step-by-step first resume (one question per screen), next-step button, live preview while editing, template picked from the job
@@ -87,3 +88,7 @@ Unit tests run on every push (Actions > "unit-test-report" artifact). Locally: `
 - `api/AiClient.kt` - AI requests (NVIDIA hosted models, OpenAI-compatible API)
 
 Never commit `.env`, keystores or API keys.
+
+
+## Backend, web app and accounts
+See [FULLSTACK.md](FULLSTACK.md): Node/MongoDB backend, web app, login with EmailJS codes, and cloud sync for the mobile app.

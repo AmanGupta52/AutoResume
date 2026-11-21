@@ -97,8 +97,7 @@ fun SuggestionStrip(vm: ResumeViewModel, tab: Int, r: Resume, onGoTab: (Int) -> 
 // ---------------------------------------------------------------- errors
 
 @Composable
-fun AiErrorCard(error: AiError, detail: String?, onRetry: () -> Unit, onSettings: () -> Unit) {
-    val keyProblem = error == AiError.NO_KEY || error == AiError.BAD_KEY
+fun AiErrorCard(error: AiError, detail: String?, onRetry: () -> Unit) {
     Surface(
         shape = RoundedCornerShape(14.dp),
         color = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer,
@@ -106,16 +105,11 @@ fun AiErrorCard(error: AiError, detail: String?, onRetry: () -> Unit, onSettings
     ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(error.message, style = MaterialTheme.typography.bodyMedium)
-            if (error == AiError.NO_KEY)
-                Text("It is free: get a key at build.nvidia.com, open Settings and paste it there.", style = MaterialTheme.typography.bodySmall)
-            if (error == AiError.OTHER && !detail.isNullOrBlank()) Text(detail, style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (keyProblem) Button(onClick = onSettings, shape = MaterialTheme.shapes.small) { Text("Open Settings") }
-                if (error != AiError.NO_KEY) OutlinedButton(onClick = onRetry, shape = MaterialTheme.shapes.small) {
-                    Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Retry")
-                }
+            if (!detail.isNullOrBlank()) Text(detail, style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            if (error != AiError.NO_KEY && error != AiError.BAD_KEY) OutlinedButton(onClick = onRetry, shape = MaterialTheme.shapes.small) {
+                Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Retry")
             }
         }
     }
@@ -214,7 +208,7 @@ private fun ProposalContent(vm: ResumeViewModel, prop: AiProposal, resume: Resum
         }
 
         if (prop.error != null) {
-            AiErrorCard(prop.error, prop.errorDetail, onRetry = { vm.retryProposal() }, onSettings = { vm.closeProposal(); vm.go(Screen.SETTINGS) })
+            AiErrorCard(prop.error, prop.errorDetail, onRetry = { vm.retryProposal() })
             if (prop.text.isNotBlank()) Text("Your last result is kept above.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
 
@@ -297,6 +291,7 @@ fun AiChatSheet(vm: ResumeViewModel) {
     val chat by vm.chat.collectAsState()
     val stream by vm.chatStream.collectAsState()
     val err by vm.chatError.collectAsState()
+    val errDetail by vm.chatErrorDetail.collectAsState()
     val tab by vm.editorTab.collectAsState()
     val screen by vm.screen.collectAsState()
     val clipboard = LocalClipboardManager.current
@@ -367,7 +362,7 @@ fun AiChatSheet(vm: ResumeViewModel) {
                 }
                 err?.let { e ->
                     item {
-                        AiErrorCard(e, null, onRetry = { vm.retryChat() }, onSettings = { vm.closeChat(); vm.go(Screen.SETTINGS) })
+                        AiErrorCard(e, errDetail, onRetry = { vm.retryChat() })
                     }
                 }
             }
@@ -385,26 +380,4 @@ fun AiChatSheet(vm: ResumeViewModel) {
             }
         }
     }
-}
-
-// ---------------------------------------------------------------- first-launch setup message
-
-@Composable
-fun AiSetupDialog(vm: ResumeViewModel) {
-    val show by vm.showAiSetup.collectAsState()
-    if (!show) return
-    AlertDialog(
-        onDismissRequest = { vm.dismissAiSetup() },
-        title = { Text("Turn on AI help") },
-        text = {
-            Text(
-                "AI writing help is off because no NVIDIA key is set.\n\n" +
-                    "1. Get a free key at build.nvidia.com (it starts with nvapi-).\n" +
-                    "2. Open Settings and paste it.\n\n" +
-                    "Everything else in the app works without AI.",
-            )
-        },
-        confirmButton = { TextButton(onClick = { vm.dismissAiSetup(); vm.go(Screen.SETTINGS) }) { Text("Open Settings") } },
-        dismissButton = { TextButton(onClick = { vm.dismissAiSetup() }) { Text("Not now") } },
-    )
 }

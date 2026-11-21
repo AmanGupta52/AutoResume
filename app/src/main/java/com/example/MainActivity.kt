@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.room.Room
+import com.example.api.BackendClient
 import com.example.data.AppDatabase
 import com.example.ui.*
 import com.example.ui.Text
@@ -72,6 +73,12 @@ fun AppRoot(vm: ResumeViewModel) {
         }
     }
 
+    // with a backend configured, the app needs an account; without one it keeps working offline as before
+    val account by vm.auth.collectAsState()
+    if (BackendClient.isConfigured && account == null) {
+        AuthScreen(vm)
+        return
+    }
     if (onboarding) {
         OnboardingScreen(vm)
         return
@@ -105,5 +112,4 @@ fun AppRoot(vm: ResumeViewModel) {
     // AI layers that can appear over any screen
     AiProposalSheet(vm)
     AiChatSheet(vm)
-    AiSetupDialog(vm)
 }

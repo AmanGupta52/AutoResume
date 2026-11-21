@@ -1,0 +1,33 @@
+'use strict';
+require('dotenv').config();
+const mongoose = require('mongoose');
+const { loadConfig, configProblems } = require('./config');
+const { createApp } = require('./app');
+
+async function main() {
+  const config = loadConfig(process.env);
+  const problems = configProblems(config);
+  if (problems.length) {
+    console.error('Cannot start:\n - ' + problems.join('\n - '));
+    process.exit(1);
+  }
+  mongoose.set('strictQuery', true);
+  await mongoose.connect(config.mongoUri, { serverSelectionTimeoutMS: 10000 });
+  console.log('MongoDB connected');
+
+  const app = createApp(config);
+  const server = app.listen(config.port, () => console.log(`AutoResume API and web app on http://localhost:${config.port}`));
+
+  const stop = async () => {
+    server.close();
+    await mongoose.disconnect();
+    process.exit(0);
+  };
+  process.on('SIGTERM', stop);
+  process.on('SIGINT', stop);
+}
+
+main().catch((e) => {
+  console.error('Failed to start:', e.message);
+  process.exit(1);
+});

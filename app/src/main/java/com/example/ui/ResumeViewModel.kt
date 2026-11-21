@@ -12,6 +12,8 @@ import com.example.api.AiClient
 import com.example.api.AiError
 import com.example.api.AiMessage
 import com.example.api.AiResult
+import com.example.api.ApiResult
+import com.example.api.BackendClient
 import com.example.data.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
@@ -19,9 +21,16 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import java.io.File
+import java.text.DateFormat
+import java.util.Date
 
 enum class Screen { RESUMES, ATS, LETTER, SETTINGS, EDITOR, PREVIEW, GUIDED }
+
+data class AuthUser(val id: String, val name: String, val email: String)
+
+enum class AuthStage { LOGIN, REGISTER, VERIFY, FORGOT, RESET }
 
 /** One-line message for the snackbar, optionally with an action such as Undo. */
 data class UiMessage(val text: String, val actionLabel: String? = null, val onAction: (() -> Unit)? = null)
@@ -63,9 +72,9 @@ class ResumeViewModel(private val dao: ResumeDao, private val app: Context) : Vi
     val chat = MutableStateFlow<List<AiMessage>>(emptyList())
     val chatStream = MutableStateFlow<String?>(null)
     val chatError = MutableStateFlow<AiError?>(null)
+    val chatErrorDetail = MutableStateFlow<String?>(null)
     private var chatJob: Job? = null
 
-    val showAiSetup = MutableStateFlow(false)
     val guidedStep = MutableStateFlow(0)
 
     val atsResult = MutableStateFlow<AtsScanData?>(null)
@@ -75,11 +84,200 @@ class ResumeViewModel(private val dao: ResumeDao, private val app: Context) : Vi
 
     init {
         Lang.code = language.value
-        AiClient.keyOverride = prefs.getString("nvidia_key", "") ?: ""
         aiAvailableFlow.value = AiClient.isConfigured
-        if (!showOnboarding.value) maybeShowAiSetup()
         viewModelScope.launch {
             saveTrigger.debounce(500).collect { saveNow() }
+        }
+    }
+
+    // ---------- account (login) and sync with the backend ----------
+    private val sync = ResumeSync(dao, prefs)
+    private fun token(): String = prefs.getString("auth_token", "") ?: ""
+
+    val auth = MutableStateFlow(loadAuth())
+    val authStage = MutableStateFlow(AuthStage.LOGIN)
+    val authBusy = MutableStateFlow(false)
+    val authError = MutableStateFlow<String?>(null)
+    val authNotice = MutableStateFlow<String?>(null)
+    val pendingEmail = MutableStateFlow("")
+    val syncStatus = MutableStateFlow("")
+    private val syncTrigger = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    private var dirty = false // the open draft has edits that are not in the database yet
+
+    // second init block: it must come after the properties above, which are created in textual order
+    init {
+        viewModelScope.launch {
+            syncTrigger.debounce(3000).collect { runSync() }
+        }
+        if (auth.value != null) runSync()
+    }
+
+    private fun loadAuth(): AuthUser? {
+        val id = prefs.getString("auth_uid", "") ?: ""
+        if (token().isBlank() || id.isBlank()) return null
+        return AuthUser(id, prefs.getString("auth_name", "") ?: "", prefs.getString("auth_email", "") ?: "")
+    }
+
+    fun authGo(stage: AuthStage) {
+        authStage.value = stage
+        authError.value = null
+        authNotice.value = null
+    }
+
+    private fun authCall(
+        path: String,
+        body: JSONObject,
+        onFail: (ApiResult.Fail) -> Unit = { authError.value = it.message },
+        onOk: (JSONObject) -> Unit,
+    ) {
+        if (authBusy.value) return
+        authBusy.value = true
+        authError.value = null
+        authNotice.value = null
+        viewModelScope.launch {
+            when (val r = BackendClient.call("POST", path, body)) {
+                is ApiResult.Ok -> onOk(r.json)
+                is ApiResult.Fail -> onFail(r)
+            }
+            authBusy.value = false
+        }
+    }
+
+    fun register(name: String, email: String, password: String) = authCall(
+        "/api/auth/register",
+        JSONObject().put("name", name.trim()).put("email", email.trim()).put("password", password),
+    ) {
+        pendingEmail.value = email.trim().lowercase()
+        authStage.value = AuthStage.VERIFY
+        authNotice.value = "We sent a 6-digit code to ${pendingEmail.value}."
+    }
+
+    fun verify(code: String) = authCall(
+        "/api/auth/verify",
+        JSONObject().put("email", pendingEmail.value).put("code", code.trim()),
+    ) { startSession(it) }
+
+    fun resendCode() = authCall(
+        "/api/auth/resend",
+        JSONObject().put("email", pendingEmail.value),
+    ) { authNotice.value = "A new code is on its way." }
+
+    fun login(email: String, password: String) = authCall(
+        "/api/auth/login",
+        JSONObject().put("email", email.trim()).put("password", password),
+        onFail = {
+            if (it.code == "EMAIL_NOT_VERIFIED") {
+                pendingEmail.value = email.trim().lowercase()
+                authStage.value = AuthStage.VERIFY
+                authNotice.value = it.message
+            } else authError.value = it.message
+        },
+    ) { startSession(it) }
+
+    fun forgotPassword(email: String) = authCall(
+        "/api/auth/forgot",
+        JSONObject().put("email", email.trim()),
+    ) {
+        pendingEmail.value = email.trim().lowercase()
+        authStage.value = AuthStage.RESET
+        authNotice.value = "If an account exists, a code is on its way to ${pendingEmail.value}."
+    }
+
+    fun resetPassword(code: String, password: String) = authCall(
+        "/api/auth/reset",
+        JSONObject().put("email", pendingEmail.value).put("code", code.trim()).put("password", password),
+    ) {
+        authStage.value = AuthStage.LOGIN
+        authNotice.value = "Your password was changed. Please log in."
+    }
+
+    private fun startSession(j: JSONObject) {
+        val tokenValue = j.optString("token", "")
+        val u = j.optJSONObject("user")
+        if (tokenValue.isBlank() || u == null) {
+            authError.value = "Unexpected answer from the server."
+            return
+        }
+        val user = AuthUser(u.optString("id"), u.optString("name"), u.optString("email"))
+        val last = prefs.getString("auth_last_uid", "") ?: ""
+        viewModelScope.launch {
+            // another person's resumes must not stay on this phone
+            if (last.isNotBlank() && last != user.id) sync.wipeLocal()
+            prefs.edit().putString("auth_token", tokenValue).putString("auth_uid", user.id)
+                .putString("auth_name", user.name).putString("auth_email", user.email).putString("auth_last_uid", user.id).apply()
+            authStage.value = AuthStage.LOGIN
+            pendingEmail.value = ""
+            auth.value = user
+            runSync()
+        }
+    }
+
+    private fun expireSession() {
+        prefs.edit().remove("auth_token").apply() // local resumes stay; they sync again after the next login
+        auth.value = null
+        authStage.value = AuthStage.LOGIN
+        authNotice.value = "Your session expired. Please log in again."
+        syncStatus.value = ""
+    }
+
+    fun syncSoon() {
+        if (auth.value != null) syncTrigger.tryEmit(Unit)
+    }
+
+    fun runSync() {
+        val t = token()
+        if (t.isBlank() || !BackendClient.isConfigured) return
+        viewModelScope.launch {
+            syncStatus.value = "Syncing..."
+            when (val o = sync.syncAll(t, draft.value?.id)) {
+                is SyncOutcome.Ok -> {
+                    syncStatus.value = "Last synced " + DateFormat.getTimeInstance(DateFormat.SHORT).format(Date())
+                    o.warning?.let { say(it) }
+                    // signing in on a new phone: the resumes are already here, so skip the first-run questions
+                    if (showOnboarding.value && dao.getAllResumes().first().isNotEmpty()) {
+                        prefs.edit().putBoolean("onboarded", true).apply()
+                        showOnboarding.value = false
+                    }
+                }
+                is SyncOutcome.Fail -> when {
+                    o.unauthorized -> expireSession()
+                    o.offline -> syncStatus.value = "Offline. Your changes will sync later."
+                    else -> syncStatus.value = "Sync problem: ${o.message}"
+                }
+            }
+        }
+    }
+
+    private suspend fun flushDraft() {
+        val r = draft.value ?: return
+        if (!dirty) return
+        dirty = false
+        dao.insertResume(r.copy(lastModified = System.currentTimeMillis()))
+    }
+
+    /** Syncs first, so nothing is lost, then removes the account's resumes from this phone. */
+    fun logout() {
+        val t = token()
+        viewModelScope.launch {
+            syncStatus.value = "Syncing before sign out..."
+            flushDraft()
+            val o = sync.syncAll(t, null)
+            if (o is SyncOutcome.Fail) {
+                if (o.unauthorized) expireSession()
+                else {
+                    syncStatus.value = ""
+                    say("Could not sync your latest changes. Connect to the internet and try again.")
+                }
+                return@launch
+            }
+            sync.wipeLocal()
+            prefs.edit().remove("auth_token").remove("auth_uid").remove("auth_name").remove("auth_email").remove("auth_last_uid").apply()
+            resetAi()
+            draft.value = null
+            screen.value = Screen.RESUMES
+            syncStatus.value = ""
+            authStage.value = AuthStage.LOGIN
+            auth.value = null
         }
     }
 
@@ -113,28 +311,41 @@ class ResumeViewModel(private val dao: ResumeDao, private val app: Context) : Vi
             val base = if (withSample) sampleResume() else Resume()
             val r = base.copy(name = name.ifBlank { "Untitled resume" })
             val id = dao.insertResume(r).toInt()
+            syncSoon()
             if (withSample) openEditor(r.copy(id = id)) else openGuided(r.copy(id = id))
         }
     }
 
     fun update(change: (Resume) -> Resume) {
         draft.update { it?.let(change) }
+        dirty = true
         saveTrigger.tryEmit(Unit)
     }
 
     private fun saveNow() {
         val r = draft.value ?: return
-        viewModelScope.launch { dao.insertResume(r.copy(lastModified = System.currentTimeMillis())) }
+        if (!dirty) return // nothing changed, so the copy on the account must not be overwritten
+        dirty = false
+        viewModelScope.launch {
+            dao.insertResume(r.copy(lastModified = System.currentTimeMillis()))
+            syncSoon()
+        }
     }
 
     fun duplicate(r: Resume) = viewModelScope.launch {
         dao.insertResume(r.copy(id = 0, name = "${r.name} (copy)", lastModified = System.currentTimeMillis()))
+        syncSoon()
     }
 
-    fun delete(r: Resume) = viewModelScope.launch { dao.deleteResumeById(r.id) }
+    fun delete(r: Resume) = viewModelScope.launch {
+        sync.noteDeleted(r.id) // the account copy is removed on the next sync
+        dao.deleteResumeById(r.id)
+        syncSoon()
+    }
 
     fun rename(r: Resume, name: String) = viewModelScope.launch {
         dao.insertResume(r.copy(name = name.ifBlank { r.name }, lastModified = System.currentTimeMillis()))
+        syncSoon()
     }
 
     fun setAvatar(uri: Uri) {
@@ -161,7 +372,7 @@ class ResumeViewModel(private val dao: ResumeDao, private val app: Context) : Vi
         aiJob?.cancel(); chatJob?.cancel()
         aiBusy.value = null
         proposal.value = null
-        chat.value = emptyList(); chatStream.value = null; chatError.value = null
+        chat.value = emptyList(); chatStream.value = null; chatError.value = null; chatErrorDetail.value = null
         showChat.value = false
     }
 
@@ -175,23 +386,17 @@ class ResumeViewModel(private val dao: ResumeDao, private val app: Context) : Vi
 
     private fun failed(e: AiError) = say(e.message)
 
-    fun setApiKey(key: String) {
-        val k = key.trim()
-        prefs.edit().putString("nvidia_key", k).apply()
-        AiClient.keyOverride = k
-        aiAvailableFlow.value = AiClient.isConfigured
-        say(if (k.isBlank()) "Key removed." else "Key saved. AI help is on.")
-    }
-
-    fun hasSavedKey(): Boolean = !prefs.getString("nvidia_key", "").isNullOrBlank()
-
-    private fun maybeShowAiSetup() {
-        if (!aiAvailable && !prefs.getBoolean("ai_setup_seen", false)) showAiSetup.value = true
-    }
-
-    fun dismissAiSetup() {
-        prefs.edit().putBoolean("ai_setup_seen", true).apply()
-        showAiSetup.value = false
+    /** Settings button: one tiny request so the person (and you) can see whether AI works and why not. */
+    fun testAi() {
+        if (aiBusy.value != null) return
+        viewModelScope.launch {
+            aiBusy.value = "test"
+            when (val res = AiClient.ask("Reply with the single word OK.", "ping", maxTokens = 20, temperature = 0.0)) {
+                is AiResult.Ok -> say("AI works.")
+                is AiResult.Fail -> say(res.error.message + (res.detail?.let { " ($it)" } ?: ""))
+            }
+            aiBusy.value = null
+        }
     }
 
     private fun busyKey(req: AiRequest) = when (req.kind) {
@@ -324,6 +529,7 @@ class ResumeViewModel(private val dao: ResumeDao, private val app: Context) : Vi
         closeProposal()
         message.value = UiMessage("Added to your resume", "Undo") {
             draft.value = before
+            dirty = true
             saveTrigger.tryEmit(Unit)
         }
     }
@@ -350,13 +556,13 @@ class ResumeViewModel(private val dao: ResumeDao, private val app: Context) : Vi
     // ---------- chat helper ----------
     fun openChat() { showChat.value = true }
     fun closeChat() { showChat.value = false }
-    fun clearChat() { chatJob?.cancel(); chat.value = emptyList(); chatStream.value = null; chatError.value = null }
+    fun clearChat() { chatJob?.cancel(); chat.value = emptyList(); chatStream.value = null; chatError.value = null; chatErrorDetail.value = null }
 
     fun sendChat(text: String) {
         val r = draft.value ?: return
         val t = text.trim()
         if (t.isEmpty() || chatStream.value != null) return
-        chatError.value = null
+        chatError.value = null; chatErrorDetail.value = null
         chat.update { it + AiMessage("user", t) }
         if (!aiAvailable) { chatError.value = AiError.NO_KEY; return }
         chatStream.value = ""
@@ -367,7 +573,7 @@ class ResumeViewModel(private val dao: ResumeDao, private val app: Context) : Vi
                 val msgs = listOf(AiMessage("system", AiPrompts.chatSystem(tab, draft.value ?: r))) + history
                 when (val res = AiClient.stream(msgs, maxTokens = 600, temperature = 0.5) { chatStream.value = it }) {
                     is AiResult.Ok -> chat.update { it + AiMessage("assistant", res.text) }
-                    is AiResult.Fail -> chatError.value = res.error
+                    is AiResult.Fail -> { chatError.value = res.error; chatErrorDetail.value = res.detail }
                 }
             } finally {
                 chatStream.value = null
@@ -415,7 +621,7 @@ class ResumeViewModel(private val dao: ResumeDao, private val app: Context) : Vi
             val user = "${AiContext.block("ATS", r)}\n\nJOB DESCRIPTION TO MATCH:\n$jobDescription"
             when (val res = AiClient.ask(system, user, 900)) {
                 is AiResult.Ok -> atsAiText.value = res.text
-                is AiResult.Fail -> failed(res.error)
+                is AiResult.Fail -> say(res.error.message + (res.detail?.let { " ($it)" } ?: ""))
             }
             aiBusy.value = null
         }
@@ -429,6 +635,7 @@ class ResumeViewModel(private val dao: ResumeDao, private val app: Context) : Vi
         update(change)
         message.value = UiMessage("$label removed", "Undo") {
             draft.value = before
+            dirty = true
             saveTrigger.tryEmit(Unit)
         }
     }
@@ -440,12 +647,12 @@ class ResumeViewModel(private val dao: ResumeDao, private val app: Context) : Vi
     fun finishOnboarding(name: String, job: String, email: String) {
         prefs.edit().putBoolean("onboarded", true).apply()
         showOnboarding.value = false
-        maybeShowAiSetup()
         if (name.isBlank() && job.isBlank()) return
         viewModelScope.launch {
             val r = Resume(name = "My resume", fullName = name.trim(), jobTitle = job.trim(), email = email.trim())
                 .withTarget(TargetJob(title = job.trim()))
             val id = dao.insertResume(r).toInt()
+            syncSoon()
             openGuided(r.copy(id = id))
         }
     }
@@ -457,6 +664,7 @@ class ResumeViewModel(private val dao: ResumeDao, private val app: Context) : Vi
                 say("That file is not a LinkedIn data export (.zip with Profile.csv, Positions.csv...).")
             } else {
                 val id = dao.insertResume(r).toInt()
+                syncSoon()
                 openEditor(r.copy(id = id))
                 say("Imported. Please check each section.")
             }
@@ -471,6 +679,7 @@ class ResumeViewModel(private val dao: ResumeDao, private val app: Context) : Vi
             val added = keywords.filter { it.isNotBlank() && it.lowercase() !in have }.map { SkillEntry(it, "Intermediate", "Technical") }
             val copy = base.copy(id = 0, name = "${base.name} - tailored", skills = base.skills + added, atsScore = 0, lastModified = System.currentTimeMillis())
             val id = dao.insertResume(copy).toInt()
+            syncSoon()
             val saved = copy.copy(id = id)
             message.value = UiMessage("Created a tailored copy with ${added.size} new skills", "Open") { openEditor(saved) }
         }

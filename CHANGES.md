@@ -41,3 +41,16 @@ existing `fontSize` column, so there is no database migration and existing resum
 - `ui/GuidedScreen.kt`: step-by-step first resume
 - `ui/TargetJob.kt`: target job stored in the unused `atsFeedback` column (no database migration, nothing is wiped)
 - Editor: target job chip, tappable "Next step", live preview toggle, Ask AI button, suggestions on every tab
+
+## AI fix: retired NVIDIA model (HTTP 410)
+- `meta/llama-3.3-70b-instruct` was retired by NVIDIA, so every AI call failed. `AiClient` now reads the live model list
+  (GET /v1/models), skips models answering 410/404 and remembers the one that works. `NVIDIA_MODEL=auto` by default.
+- Removed the in-app key box. The key comes only from the build (`NVIDIA_API_KEY` secret or variable).
+- Fixed JSON `null` being read as the text "null" in streamed answers.
+- Settings has a "Test AI connection" button; error cards show the technical detail.
+
+## Full stack: backend, web app, accounts and sync
+- `backend/`: Express + MongoDB API, EmailJS email codes, JWT login, resumes per user (no PDFs stored)
+- `web/`: plain-JS web app (login, register, dashboard, editor, live preview, Download PDF in the browser)
+- Android: login/registration screens, two-way sync (`ResumeSync`), PDFs saved on the phone (Downloads/AutoResume)
+- See `FULLSTACK.md` for setup, EmailJS template, deployment and the API

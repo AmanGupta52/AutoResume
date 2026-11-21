@@ -50,17 +50,27 @@ jobs:
         with:
           gradle-version: ${{ hashFiles('gradlew') != '' && 'wrapper' || '9.3.1' }}
 
+      # The key can be a repository Secret or a Variable named NVIDIA_API_KEY (Settings > Secrets and variables > Actions).
+      # NVIDIA_MODEL is optional: leave it unset and the app picks a live model by itself.
       - name: Create .env (NVIDIA key)
         env:
-          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
-          NVIDIA_MODEL: ${{ secrets.NVIDIA_MODEL }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY || vars.NVIDIA_API_KEY }}
+          NVIDIA_MODEL: ${{ secrets.NVIDIA_MODEL || vars.NVIDIA_MODEL }}
+          BACKEND_URL: ${{ secrets.BACKEND_URL || vars.BACKEND_URL }}
         run: |
           cp .env.example .env
           if [ -n "$NVIDIA_API_KEY" ]; then
             sed -i "s|^NVIDIA_API_KEY=.*|NVIDIA_API_KEY=$NVIDIA_API_KEY|" .env
+          else
+            echo "::warning::NVIDIA_API_KEY is empty. Add it under Settings > Secrets and variables > Actions. The app will build with AI turned off."
           fi
           if [ -n "$NVIDIA_MODEL" ]; then
             sed -i "s|^NVIDIA_MODEL=.*|NVIDIA_MODEL=$NVIDIA_MODEL|" .env
+          fi
+          if [ -n "$BACKEND_URL" ]; then
+            sed -i "s|^BACKEND_URL=.*|BACKEND_URL=$BACKEND_URL|" .env
+          else
+            echo "::warning::BACKEND_URL is empty. The app will build without login and cloud sync."
           fi
 
       - name: Create debug keystore
