@@ -5,7 +5,7 @@
 // and the result reports it (`lossy`) so the app can tell the person.
 
 import { METRICS } from './pdf-metrics.js';
-import { parseDesign, webTemplate, COLORS, MARGINS, SECTION_TITLES, safeUrl } from './templates.js';
+import { parseDesign, webTemplate, COLORS, MARGINS, SECTION_TITLES, safeUrl, SERIF_TEMPLATES, darken } from './templates.js';
 
 const MM = 72 / 25.4;
 const PAGE_W = 595.28;
@@ -70,13 +70,19 @@ export function generateResumePdf(resume) {
   const INK = [0.07, 0.07, 0.08];
   const GREY = [0.33, 0.33, 0.35];
 
-  const serif = tpl === 'Executive Premium';
+  const serif = SERIF_TEMPLATES.includes(tpl);
   const F = { body: serif ? 'Times-Roman' : 'Helvetica', bold: serif ? 'Times-Bold' : 'Helvetica-Bold', italic: serif ? 'Times-Italic' : 'Helvetica' };
   const st = {
     'Modern Professional': { name: [accent, 24, 'left'], head: accent, rule: [0.87, 0.87, 0.88], headRuleW: 0.6, bottomRule: [accent, 1.5], cs: 1 },
     'Minimal ATS': { name: [[0, 0, 0], 20, 'center'], head: [0, 0, 0], rule: [0, 0, 0], headRuleW: 0.8, bottomRule: null, cs: 0.4 },
     'Executive Premium': { name: [INK, 24, 'center'], head: hex('#7A5A08'), rule: hex('#E3D3A4'), headRuleW: 0.7, bottomRule: [hex('#B8860B'), 1.5], cs: 1.2 },
-    'Compact Two-Column': { name: [[1, 1, 1], 21, 'left'], head: accent, rule: [0.87, 0.87, 0.88], headRuleW: 0.6, bottomRule: null, cs: 1 },
+    'Compact Two-Column': { name: [[1, 1, 1], 21, 'left'], head: accent, rule: [0.87, 0.87, 0.88], headRuleW: 0.6, bottomRule: null, cs: 1, band: accent },
+    'Premium Creative': { name: [[1, 1, 1], 24, 'left'], head: accent, rule: [0.87, 0.87, 0.88], headRuleW: 0.6, bottomRule: null, cs: 1, band: hex(darken(COLORS[d.colorSchemeId] || COLORS.Blue, 0.5)) },
+    'Bold Header': { name: [[1, 1, 1], 23, 'left'], head: accent, rule: [0.87, 0.87, 0.88], headRuleW: 0.6, bottomRule: null, cs: 1, band: hex(darken(COLORS[d.colorSchemeId] || COLORS.Blue, 0.55)) },
+    'Developer Resume': { name: [[1, 1, 1], 22, 'left'], head: accent, rule: [0.87, 0.87, 0.88], headRuleW: 0.6, bottomRule: null, cs: 1, band: hex('#0f172a') },
+    'Academic CV': { name: [INK, 21, 'center'], head: [0, 0, 0], rule: [0, 0, 0], headRuleW: 0.8, bottomRule: null, cs: 0.6 },
+    'Classic Serif': { name: [INK, 22, 'center'], head: INK, rule: [0.8, 0.8, 0.82], headRuleW: 0.6, bottomRule: [INK, 1.5], cs: 1.2 },
+    Timeline: { name: [accent, 23, 'left'], head: accent, rule: accent, headRuleW: 0.9, bottomRule: null, cs: 1 },
   }[tpl];
 
   // ---------------------------------------------------------------- text layout
@@ -256,18 +262,18 @@ export function generateResumePdf(resume) {
   const innerW = PAGE_W - 2 * M;
   const contactSegs = () => {
     const segs = [];
-    const add = (text, url) => { if (segs.length) segs.push({ text: '  |  ', color: [0.6, 0.6, 0.62] }); segs.push({ text, url, color: url ? accent : (tpl === 'Compact Two-Column' ? [1, 1, 1] : GREY) }); };
+    const add = (text, url) => { if (segs.length) segs.push({ text: '  |  ', color: [0.6, 0.6, 0.62] }); segs.push({ text, url, color: url ? accent : (st.band ? [1, 1, 1] : GREY) }); };
     if (has(d.email)) add(d.email);
     if (has(d.phone)) add(d.phone);
     if (has(d.location)) add(d.location);
     if (has(d.linkedinUrl)) add('LinkedIn', safeUrl(d.linkedinUrl) || undefined);
     if (has(d.githubUrl)) add('GitHub', safeUrl(d.githubUrl) || undefined);
     if (has(d.portfolioUrl)) add('Portfolio', safeUrl(d.portfolioUrl) || undefined);
-    if (tpl === 'Compact Two-Column') segs.forEach((s) => { if (s.url) s.color = [1, 1, 1]; });
+    if (st.band) segs.forEach((s) => { if (s.url) s.color = [1, 1, 1]; });
     return segs;
   };
 
-  const band = tpl === 'Compact Two-Column';
+  const band = !!st.band;
   const hx = M;
   const hw = innerW;
   const [nameColor, nameSize, nameAlign] = st.name;
@@ -282,7 +288,7 @@ export function generateResumePdf(resume) {
 
   function drawHeader(page) {
     let y = band ? 0 : M;
-    if (band) { drawRect(page, 0, 0, PAGE_W, padBand * 2 + headTextH, accent); y = padBand; }
+    if (band) { drawRect(page, 0, 0, PAGE_W, padBand * 2 + headTextH, st.band); y = padBand; }
     for (const p of headParts) { drawLines(page, p.lines, hx, y, hw, p.size, p.align); y += p.lines.length * lhOf(p.size) + p.gapAfter; }
     if (st.bottomRule) drawLine(page, hx, y + 5, hx + hw, st.bottomRule[0], st.bottomRule[1]);
   }

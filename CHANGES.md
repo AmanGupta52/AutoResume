@@ -1,3 +1,24 @@
+# Changes: AI backend, web parity, bug fixes
+
+## AI on the backend (see AI-SETUP.md)
+- New `backend/src/services/nvidia.js` (live model discovery, retired-model skipping, streaming), `services/usage.js` (daily and parallel caps), `routes/ai.js` + `routes/aiHandlers.js` (7 endpoints).
+- The Android app no longer contains an NVIDIA key: `AiClient` calls `POST /api/ai/chat`; `NVIDIA_*` build settings removed.
+- Shared resume logic (ATS, writing check, coach, AI prompts, number guard) lives once in `web/js/shared/` and is used by the browser and the server.
+
+## Web app now has every phone feature
+Tabs (Basics...Check), strength meter, next step, suggestion cards, target job, AI preview-before-apply with Shorter/Stronger/More formal, Ask AI chat (streaming), job match (ATS) with tailored copy, writing check, cover letter (AI + offline, print/PDF), 10 templates with live thumbnails, fonts, colours, section order, fit to 1 page, page counter, Word export, LinkedIn zip import, step-by-step setup, welcome screen, rename, thumbnails, undo for deletes, Hindi, light/dark theme, settings with AI test.
+
+## Bugs fixed
+- **Target job lost after sync**: the server stripped the unit-separator control character the app uses to store the target job, so job title/description were destroyed on the first sync. Now preserved (regression test).
+- Pure-DOM `replaceChildren` showed the text "null" in the new screens; replaced with a safe `fill()` helper.
+- Tab bar collapsed on phones (flex shrink).
+- `PDF` generator now supports all 10 templates (band headers, serif, centred).
+- Node engines raised to >=20.3 (`AbortSignal.any`).
+- `backend/.env` removed from the package (it was inside the zip you shared).
+
+## Tests
+`cd backend && npm test`: 49 tests (NVIDIA service, handlers, shared logic, schema, existing tests). Browser tests were run against the real web app with a fake NVIDIA.
+
 # AutoResume - rebuilt UI
 
 The old UI layer (about 9,000 lines, mixed hard-coded colours, fake login/OTP, three renderers) was replaced.

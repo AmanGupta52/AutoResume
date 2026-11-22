@@ -1,6 +1,7 @@
 import { generateResumePdf, pdfFileName } from './pdf.js';
 import { api } from './api.js';
 import { toast } from './ui.js';
+import { generateResumeDocx, docxFileName } from './docx.js';
 
 /** Only links that really point at Cloudinary over https are ever shown as clickable. */
 export const isStoredPdfUrl = (u) => /^https:\/\/res\.cloudinary\.com\//.test(String(u || ''));
@@ -33,4 +34,18 @@ export async function downloadAndStorePdf(resume) {
     else toast(`PDF downloaded, but saving it to your account failed: ${e.message}`, 'error');
     return null;
   }
+}
+
+/** Word (.docx): plain and ATS-friendly, saved to this computer only. */
+export function downloadDocx(resume) {
+  const bytes = generateResumeDocx(resume);
+  const url = URL.createObjectURL(new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = docxFileName(resume);
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+  toast('Word file downloaded.');
 }

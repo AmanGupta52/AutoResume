@@ -11,6 +11,22 @@ function parseCloudinary(env) {
   return { cloudName, apiKey, apiSecret, folder };
 }
 
+const unquote = (v) => String(v || '').trim().replace(/^["']+|["']+$/g, '').trim();
+
+/** NVIDIA_API_KEY is the free key from https://build.nvidia.com (starts with "nvapi-"). NVIDIA_MODEL "auto" lets the server pick a live model. */
+function parseAi(env) {
+  const model = unquote(env.NVIDIA_MODEL);
+  const n = (v, d) => (Number(v) > 0 ? Number(v) : d);
+  return {
+    apiKey: unquote(env.NVIDIA_API_KEY),
+    model: model.toLowerCase() === 'auto' ? '' : model,
+    baseUrl: (unquote(env.NVIDIA_BASE_URL) || 'https://integrate.api.nvidia.com/v1').replace(/\/+$/, ''),
+    timeoutMs: n(env.AI_TIMEOUT_MS, 90000),
+    dailyLimit: n(env.AI_DAILY_LIMIT, 150),
+    maxParallel: n(env.AI_MAX_PARALLEL, 2),
+  };
+}
+
 /** Reads settings from an environment object. Pure, so it can be tested. */
 function loadConfig(env) {
   const list = (v) => String(v || '').split(',').map((s) => s.trim()).filter(Boolean);
@@ -31,6 +47,7 @@ function loadConfig(env) {
       privateKey: env.EMAILJS_PRIVATE_KEY || '',
     },
     cloudinary: parseCloudinary(env),
+    ai: parseAi(env),
     limits: {
       maxPdfBytes: 8 * 1024 * 1024,
       resumesPerUser: 50,
@@ -61,4 +78,12 @@ function configProblems(c) {
   return p;
 }
 
-module.exports = { loadConfig, configProblems };
+/** Things worth telling the owner about that do not stop the server. */
+function configWarnings(c) {
+  const w = [];
+  if (c.ai.apiKey && !c.ai.apiKey.startsWith('nvapi-')) w.push('NVIDIA_API_KEY does not start with "nvapi-". Copy the key again from https://build.nvidia.com.');
+  if (c.env === 'production' && c.clientOrigins.length === 0) w.push('CLIENT_ORIGIN is empty: only the web app served by this server can call the API from a browser.');
+  return w;
+}
+
+module.exports = { loadConfig, configProblems, configWarnings };

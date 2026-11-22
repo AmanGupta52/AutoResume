@@ -26,10 +26,11 @@ const TOP = {
 
 const MAX_ENTRIES = 40;
 
-function cleanString(v, max) {
+function cleanString(v, max, keepSeparator = false) {
   if (typeof v !== 'string') return '';
   // keep line breaks and tabs, drop other control characters
-  return v.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '').slice(0, max);
+  const out = v.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, (c) => (keepSeparator && c === '\u001F' ? c : ''));
+  return out.slice(0, max);
 }
 
 function cleanEntry(raw, shape) {
@@ -44,7 +45,9 @@ function cleanEntry(raw, shape) {
 function sanitizeResumeData(input) {
   const src = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
   const out = {};
-  for (const [key, rule] of Object.entries(TOP)) out[key] = cleanString(src[key], rule.max);
+  // atsFeedback holds the target job as "T1" + US + title + US + description (US = unit separator, see the app's TargetJob).
+  // Stripping the separator, as every other control character is, used to destroy the target job on the first sync.
+  for (const [key, rule] of Object.entries(TOP)) out[key] = cleanString(src[key], rule.max, key === 'atsFeedback');
   for (const [key, shape] of Object.entries(ENTRY)) {
     const list = Array.isArray(src[key]) ? src[key].slice(0, MAX_ENTRIES) : [];
     out[key] = list.map((e) => cleanEntry(e, shape));

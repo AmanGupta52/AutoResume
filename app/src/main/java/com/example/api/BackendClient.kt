@@ -38,6 +38,9 @@ object BackendClient {
 
     private val base: String get() = BuildConfig.BACKEND_URL.trim().trim('"', '\'', ' ').trimEnd('/')
 
+    /** Full address of an API path, e.g. urlOf("/api/ai/chat"). */
+    fun urlOf(path: String): String = "$base$path"
+
     val isConfigured: Boolean
         get() = base.startsWith("http") && !base.contains("your-backend") && !base.contains("MY_BACKEND")
 

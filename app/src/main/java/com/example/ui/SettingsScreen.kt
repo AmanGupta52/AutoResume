@@ -80,8 +80,8 @@ fun SettingsScreen(vm: ResumeViewModel) {
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("AI writing help", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    if (aiOn) "On. The key is built into this app. Suggestions, summary, bullets, skills and the Ask AI helper work in the editor."
-                    else "Off. This build has no NVIDIA key. Add NVIDIA_API_KEY to your GitHub secrets and rebuild the app.",
+                    if (aiOn) "On. AI runs through your account on the server, so no key is stored in this app. Suggestions, summary, bullets, skills and the Ask AI helper work in the editor."
+                    else "Off. Log in to your account (and make sure the server has NVIDIA_API_KEY set) to use AI.",
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 if (aiOn) OutlinedButton(onClick = { vm.testAi() }, enabled = busy == null, shape = MaterialTheme.shapes.small) {
@@ -94,7 +94,7 @@ fun SettingsScreen(vm: ResumeViewModel) {
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("Your data", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "Resumes are stored only on this phone. Nothing is uploaded unless you use an AI feature, which sends the text you are working on to NVIDIA's AI API.",
+                    "Resumes are stored on this phone. They are uploaded only when you are logged in (sync), and an AI feature sends the text you are working on to your server, which asks NVIDIA's AI API.",
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }

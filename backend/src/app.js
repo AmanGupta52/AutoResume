@@ -6,12 +6,20 @@ const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 const { createEmailService } = require('./services/email');
 const { createCloudinaryService } = require('./services/cloudinary');
+const { createNvidiaService } = require('./services/nvidia');
+const { createUsageLimiter } = require('./services/usage');
 const { createAuthRouter } = require('./routes/auth');
 const { createResumesRouter } = require('./routes/resumes');
+const { createAiRouter } = require('./routes/ai');
 const { requireAuth } = require('./middleware/auth');
 const { notFound, errorHandler } = require('./middleware/error');
 
-function createApp(config, { email = createEmailService(config), storage = createCloudinaryService(config) } = {}) {
+function createApp(config, {
+  email = createEmailService(config),
+  storage = createCloudinaryService(config),
+  ai = createNvidiaService(config),
+  usage = createUsageLimiter({ dailyLimit: config.ai.dailyLimit, maxParallel: config.ai.maxParallel }),
+} = {}) {
   const app = express();
   if (config.trustProxy) app.set('trust proxy', 1);
   app.disable('x-powered-by');
@@ -50,12 +58,17 @@ function createApp(config, { email = createEmailService(config), storage = creat
   const apiLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 600, standardHeaders: 'draft-7', legacyHeaders: false,
     message: { error: 'RATE_LIMIT', message: 'Too many requests. Please slow down.' } });
 
-  app.get('/api/health', (_req, res) => res.json({ ok: true }));
+  // AI answers are slow and cost free-tier allowance: a tighter limit than the rest of the API
+  const aiLimiter = rateLimit({ windowMs: 10 * 60 * 1000, limit: 60, standardHeaders: 'draft-7', legacyHeaders: false,
+    message: { error: 'RATE_LIMIT', message: 'Too many AI requests. Wait a few minutes.' } });
+
+  app.get('/api/health', (_req, res) => res.json({ ok: true, ai: ai.enabled }));
   app.use('/api/auth/register', mailLimiter);
   app.use('/api/auth/resend', mailLimiter);
   app.use('/api/auth/forgot', mailLimiter);
   app.use('/api/auth', authLimiter, createAuthRouter(config, email, storage));
   app.use('/api/resumes', apiLimiter, createResumesRouter(config, requireAuth(config), storage));
+  app.use('/api/ai', aiLimiter, createAiRouter(requireAuth(config), ai, usage));
   app.use('/api', notFound);
 
   // the web app (plain files, no build step)

@@ -106,7 +106,7 @@ fun AiErrorCard(error: AiError, detail: String?, onRetry: () -> Unit) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(error.message, style = MaterialTheme.typography.bodyMedium)
             if (!detail.isNullOrBlank()) Text(detail, style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
-            if (error != AiError.NO_KEY && error != AiError.BAD_KEY) OutlinedButton(onClick = onRetry, shape = MaterialTheme.shapes.small) {
+            if (error != AiError.NO_KEY && error != AiError.BAD_KEY && error != AiError.LOGIN && error != AiError.QUOTA) OutlinedButton(onClick = onRetry, shape = MaterialTheme.shapes.small) {
                 Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
                 Text("Retry")

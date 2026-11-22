@@ -1,7 +1,9 @@
 // Resume layouts for the web app. Same data shape as the Android app (see backend/src/utils/resumeSchema.js).
 // Everything that comes from the person is escaped, so a resume can never run script.
 
-export const TEMPLATES = ['Modern Professional', 'Minimal ATS', 'Executive Premium', 'Compact Two-Column'];
+export const TEMPLATES = ['Modern Professional', 'Minimal ATS', 'Premium Creative', 'Developer Resume', 'Executive Premium', 'Compact Two-Column', 'Academic CV', 'Classic Serif', 'Bold Header', 'Timeline'];
+export const SERIF_TEMPLATES = ['Executive Premium', 'Academic CV', 'Classic Serif'];
+export const BAND_TEMPLATES = { 'Premium Creative': 0.5, 'Bold Header': 0.55 };
 export const COLORS = { Blue: '#0A84FF', Green: '#30D158', Cyan: '#5AC8FA', Slate: '#8E8E93', Dark: '#1F2937' };
 export const SIZES = ['Compact', 'Standard', 'Large'];
 export const MARGINS = { Narrow: 10, Standard: 15, Wide: 20 };
@@ -15,8 +17,10 @@ export const DEFAULT_ORDER = Object.keys(SECTION_TITLES);
 export function webTemplate(id) {
   const t = String(id || '');
   if (TEMPLATES.includes(t)) return t;
+  if (/developer|terminal/i.test(t)) return 'Developer Resume';
+  if (/creative/i.test(t)) return 'Premium Creative';
   if (/minimal|sheets|standard|ats/i.test(t)) return 'Minimal ATS';
-  if (/executive|corporate|classic|academic|serif/i.test(t)) return 'Executive Premium';
+  if (/executive|corporate/i.test(t)) return 'Executive Premium';
   if (/compact|two/i.test(t)) return 'Compact Two-Column';
   return 'Modern Professional';
 }
@@ -109,8 +113,15 @@ function contactLine(d) {
   return items.join(' <i>|</i> ');
 }
 
-const FONT = { Default: 'system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif', Inter: 'system-ui,"Segoe UI",Roboto,Arial,sans-serif',
+export const FONT_CHOICES = ['Default', 'Inter', 'Source Sans', 'Lora'];
+const FONT = { 'Source Sans': 'system-ui,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif', Default: 'system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif', Inter: 'system-ui,"Segoe UI",Roboto,Arial,sans-serif',
   Lora: 'Georgia,"Times New Roman",serif', Georgia: 'Georgia,"Times New Roman",serif' };
+
+export function darken(hex, f = 0.62) {
+  const v = parseInt(String(hex).replace('#', ''), 16) || 0;
+  const c = (n) => Math.floor(n * f).toString(16).padStart(2, '0');
+  return '#' + c((v >> 16) & 255) + c((v >> 8) & 255) + c(v & 255);
+}
 
 const BASE_CSS = `
 *{box-sizing:border-box}html,body{margin:0}
@@ -140,6 +151,27 @@ const LAYOUT_CSS = {
     .cols{display:grid;grid-template-columns:1.9fr 1fr;gap:18px}
     h2{font-size:.9em;text-transform:uppercase;letter-spacing:1px;color:var(--accent);border-bottom:1px solid #ddd;padding-bottom:2px}
     .side .row{display:block}.side .meta{display:block}`,
+  'Premium Creative': `
+    .head{background:var(--dark);color:#fff;padding:18px 20px;margin-bottom:12px;border-radius:0 0 12px 12px}h1{font-size:2.2em;color:#fff}.title{margin:2px 0 4px;opacity:.92}.contact{font-size:.9em;opacity:.95}.head a{color:#fff}
+    h2{font-size:.95em;text-transform:uppercase;letter-spacing:1px;border-left:5px solid var(--accent);padding-left:8px}`,
+  'Developer Resume': `
+    .head{background:#0f172a;color:#f8fafc;padding:16px 20px;border-radius:8px;margin-bottom:12px}h1{font-size:2em;color:#fff}.title{color:var(--accent);margin:2px 0 4px;filter:brightness(1.35)}.contact{font-size:.9em;color:#cbd5e1}.head a{color:#cbd5e1}
+    h2{font-size:.9em;text-transform:uppercase;letter-spacing:1px;color:var(--accent);border-bottom:1px solid #ddd;padding-bottom:2px}.meta,.sub{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.88em}`,
+  'Academic CV': `
+    body{font-family:Georgia,"Times New Roman",serif!important}
+    .head{text-align:center;margin-bottom:10px}h1{font-size:1.9em}.title{font-style:italic;color:#555}.contact{font-size:.92em;color:#444}
+    h2{font-variant:small-caps;font-size:1.1em;letter-spacing:.5px;border-bottom:1px solid #000;padding-bottom:2px}`,
+  'Classic Serif': `
+    body{font-family:Georgia,"Times New Roman",serif!important}
+    .head{text-align:center;border-bottom:2px solid #111;padding-bottom:8px;margin-bottom:12px}h1{font-size:1.8em;text-transform:uppercase;letter-spacing:2px}.title{letter-spacing:1px;color:#555;margin:2px 0}.contact{font-size:.92em;color:#444}
+    h2{font-size:.95em;text-transform:uppercase;letter-spacing:1.5px;border-bottom:1px solid #ccc;padding-bottom:2px}`,
+  'Bold Header': `
+    .head{background:var(--dark);color:#fff;padding:18px 20px;border-radius:10px;margin-bottom:12px}h1{color:#fff;font-size:2.1em}.title{opacity:.9;margin:2px 0 4px}.contact{font-size:.92em}.head a{color:#fff}
+    h2{font-size:.95em;text-transform:uppercase;letter-spacing:1px;color:var(--accent)}`,
+  Timeline: `
+    h1{font-size:2.1em;border-left:5px solid var(--accent);padding-left:10px}.title{padding-left:15px;color:#555}.contact{padding-left:15px;margin:4px 0 10px;font-size:.92em;color:#444}
+    h2{font-size:1em;color:var(--accent);border-bottom:2px solid var(--accent);display:inline-block;padding-bottom:2px}
+    .item{border-left:2px solid #ddd;padding-left:10px}`,
 };
 
 /**
@@ -153,8 +185,9 @@ export function renderResumeHtml(resume, mode = 'screen') {
   const accent = COLORS[d.colorSchemeId] || COLORS.Blue;
   const margin = MARGINS[d.margins] || MARGINS.Standard;
   const pt = { Compact: 9.5, Standard: 10.5, Large: 11.5 }[design.size];
-  const family = tpl === 'Executive Premium' ? FONT.Lora : FONT[design.font] || FONT.Default;
+  const family = SERIF_TEMPLATES.includes(tpl) ? FONT.Lora : FONT[design.font] || FONT.Default;
   const gap = design.tight ? 0.8 : 1;
+  const dark = darken(accent, BAND_TEMPLATES[tpl] || 0.55);
 
   const head = `<header class="head"><h1>${esc(d.fullName || 'Your name')}</h1>` +
     (has(d.jobTitle) ? `<div class="title">${esc(d.jobTitle)}</div>` : '') + `<div class="contact">${contactLine(d)}</div></header>`;
@@ -166,7 +199,8 @@ export function renderResumeHtml(resume, mode = 'screen') {
     const side = design.order.filter((k) => sideKeys.includes(k)).map((k) => section(k, d)).join('');
     body = `${head}<div class="cols"><main>${main}</main><aside class="side">${side}</aside></div>`;
   } else {
-    body = head + design.order.map((k) => section(k, d)).join('');
+    const order = tpl === 'Academic CV' && !/order=/.test(String(d.fontSize || '')) ? ['education', 'achievements', 'experience', 'projects', 'certifications', 'skills', 'languages', 'summary'] : design.order;
+    body = head + order.map((k) => section(k, d)).join('');
   }
 
   const page = mode === 'print'
@@ -174,7 +208,7 @@ export function renderResumeHtml(resume, mode = 'screen') {
     : `body{width:210mm;min-height:297mm;padding:${margin}mm}`;
   const title = esc((d.fullName || 'Resume') + ' - Resume');
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${title}</title><style>
-:root{--accent:${accent}}${BASE_CSS}${page}
+:root{--accent:${accent};--dark:${dark}}${BASE_CSS}${page}
 body{font-family:${family};font-size:${pt}pt}
 .sec{margin-bottom:${12 * gap}px}.item{margin-bottom:${8 * gap}px}
 ${LAYOUT_CSS[tpl]}

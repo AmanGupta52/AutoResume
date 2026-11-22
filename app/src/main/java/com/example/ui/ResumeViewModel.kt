@@ -84,6 +84,7 @@ class ResumeViewModel(private val dao: ResumeDao, private val app: Context) : Vi
 
     init {
         Lang.code = language.value
+        AiClient.tokenProvider = { prefs.getString("auth_token", "") ?: "" } // AI goes through the backend, so it needs the login
         aiAvailableFlow.value = AiClient.isConfigured
         viewModelScope.launch {
             saveTrigger.debounce(500).collect { saveNow() }
@@ -208,12 +209,14 @@ class ResumeViewModel(private val dao: ResumeDao, private val app: Context) : Vi
             authStage.value = AuthStage.LOGIN
             pendingEmail.value = ""
             auth.value = user
+            aiAvailableFlow.value = AiClient.isConfigured
             runSync()
         }
     }
 
     private fun expireSession() {
         prefs.edit().remove("auth_token").apply() // local resumes stay; they sync again after the next login
+        aiAvailableFlow.value = false
         auth.value = null
         authStage.value = AuthStage.LOGIN
         authNotice.value = "Your session expired. Please log in again."
@@ -303,6 +306,7 @@ class ResumeViewModel(private val dao: ResumeDao, private val app: Context) : Vi
             }
             sync.wipeLocal()
             prefs.edit().remove("auth_token").remove("auth_uid").remove("auth_name").remove("auth_email").remove("auth_last_uid").apply()
+            aiAvailableFlow.value = false
             resetAi()
             draft.value = null
             screen.value = Screen.RESUMES

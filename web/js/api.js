@@ -43,6 +43,54 @@ async function request(method, path, body, auth = true) {
   return data;
 }
 
+/**
+ * Streams an AI answer (server-sent events). `onText` gets the full answer so far each time it grows.
+ * Resolves with the final event ({text, model, newNumbers, ...}) or throws ApiError. `signal` cancels it.
+ */
+async function stream(path, body, onText, signal) {
+  let res;
+  try {
+    res = await fetch('/api' + path, { method: 'POST', signal, headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', Authorization: 'Bearer ' + session.token }, body: JSON.stringify({ ...body, stream: true }) });
+  } catch (e) {
+    if (e && e.name === 'AbortError') throw e;
+    throw new ApiError(0, 'NETWORK', 'Cannot reach the server. Check your internet connection.');
+  }
+  if (!res.ok) {
+    let data = {};
+    try { data = await res.json(); } catch { /* empty */ }
+    if (res.status === 401 && data.error === 'UNAUTHORIZED') { session.clear(); window.dispatchEvent(new Event('auth:expired')); }
+    throw new ApiError(res.status, data.error || 'ERROR', data.message || 'Something went wrong.', data);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let done = null;
+  const handle = (block) => {
+    let event = 'message';
+    let data = '';
+    for (const line of block.split('\n')) {
+      if (line.startsWith('event:')) event = line.slice(6).trim();
+      else if (line.startsWith('data:')) data += line.slice(5).trim();
+    }
+    if (!data) return;
+    let j;
+    try { j = JSON.parse(data); } catch { return; }
+    if (event === 'text') onText && onText(j.text || '');
+    else if (event === 'done') done = j;
+    else if (event === 'error') throw new ApiError(502, j.error || 'ERROR', j.message || 'The AI did not answer.', j);
+  };
+  for (;;) {
+    const { value, done: end } = await reader.read();
+    if (end) break;
+    buffer += decoder.decode(value, { stream: true });
+    let i;
+    while ((i = buffer.indexOf('\n\n')) >= 0) { handle(buffer.slice(0, i)); buffer = buffer.slice(i + 2); }
+  }
+  if (buffer.trim()) handle(buffer);
+  if (!done) throw new ApiError(502, 'EMPTY', 'The AI sent an empty answer. Tap Retry.');
+  return done;
+}
+
 export const api = {
   register: (name, email, password) => request('POST', '/auth/register', { name, email, password }, false),
   verify: (email, code) => request('POST', '/auth/verify', { email, code }, false),
@@ -57,5 +105,12 @@ export const api = {
   updateResume: (id, body) => request('PUT', '/resumes/' + encodeURIComponent(id), body),
   deleteResume: (id) => request('DELETE', '/resumes/' + encodeURIComponent(id)),
   uploadPdf: (id, bytes) => request('PUT', '/resumes/' + encodeURIComponent(id) + '/pdf', bytes),
+  // AI (the NVIDIA key stays on the server). Each takes the resume's data; pass an AbortSignal to cancel.
+  aiStatus: () => request('GET', '/ai/status'),
+  aiTest: () => request('POST', '/ai/test', {}),
+  aiAssist: (body, onText, signal) => stream('/ai/assist', body, onText, signal),
+  aiAsk: (body, onText, signal) => stream('/ai/ask', body, onText, signal),
+  aiAtsAdvice: (body, onText, signal) => stream('/ai/ats-advice', body, onText, signal),
+  aiCoverLetter: (body) => request('POST', '/ai/cover-letter', body),
   deletePdf: (id) => request('DELETE', '/resumes/' + encodeURIComponent(id) + '/pdf'),
 };
