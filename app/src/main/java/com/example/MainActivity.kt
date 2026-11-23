@@ -53,7 +53,6 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun AppRoot(vm: ResumeViewModel) {
     val screen by vm.screen.collectAsState()
-    val onboarding by vm.showOnboarding.collectAsState()
     val lang by vm.language.collectAsState()
     val message by vm.message.collectAsState()
     val snackbar = remember { SnackbarHostState() }
@@ -77,10 +76,6 @@ fun AppRoot(vm: ResumeViewModel) {
     val account by vm.auth.collectAsState()
     if (BackendClient.isConfigured && account == null) {
         AuthScreen(vm)
-        return
-    }
-    if (onboarding) {
-        OnboardingScreen(vm)
         return
     }
     val isTab = screen == Screen.RESUMES || screen == Screen.ATS || screen == Screen.LETTER || screen == Screen.SETTINGS

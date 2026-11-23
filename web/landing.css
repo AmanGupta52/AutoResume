@@ -1,0 +1,32 @@
+.lp{min-height:100%;display:flex;flex-direction:column}
+.lp-nav{display:flex;align-items:center;gap:10px;padding:12px max(18px,calc((100% - 1000px)/2));background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+.lp-hero{text-align:center;max-width:780px;margin:0 auto;padding:72px 18px 48px}
+.lp-hero h1{font-size:clamp(2rem,6vw,3.4rem);line-height:1.1;margin-bottom:16px;letter-spacing:-.02em}
+.lp-sub{font-size:1.15rem;color:var(--muted);max-width:620px;margin:0 auto 24px}
+.lp-cta{padding:13px 22px;font-size:1.05rem;margin-top:0}
+.lp-section{max-width:1000px;margin:0 auto;padding:40px 18px;width:100%}
+.lp-alt{background:var(--card);border-block:1px solid var(--line);max-width:none}
+.lp-alt>*{max-width:1000px;margin-inline:auto}
+.lp-h2{font-size:1.6rem;text-align:center;margin-bottom:24px}
+.lp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+.lp-feature{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:20px}
+.lp-feature h3{margin:10px 0 6px;font-size:1.05rem}.lp-feature p{margin:0}
+.lp-ico{width:40px;height:40px;border-radius:12px;background:color-mix(in srgb,var(--accent) 14%,var(--card));color:var(--accent);display:grid;place-items:center;font-size:1.2rem;font-weight:700}
+.lp-steps{list-style:none;margin:0 auto;padding:0;display:grid;gap:18px;max-width:620px}
+.lp-step{display:flex;gap:14px;align-items:flex-start}.lp-step p{margin:2px 0 0}
+.lp-num{flex:none;width:34px;height:34px;border-radius:50%;background:var(--accent);color:var(--accent-text);display:grid;place-items:center;font-weight:800}
+.lp-final{text-align:center;padding-bottom:56px}
+.lp-foot{text-align:center;padding:20px 18px calc(20px + env(safe-area-inset-bottom));border-top:1px solid var(--line);margin-top:auto}
+.server-banner{background:#fef3c7;color:#78350f;border-bottom:1px solid #f59e0b;padding:10px 16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:.95rem}
+.server-banner button{font:inherit;font-weight:600;border:1px solid #b45309;background:transparent;color:inherit;border-radius:8px;padding:4px 10px;cursor:pointer}
+/* phone polish */
+.topbar{padding-top:max(10px,env(safe-area-inset-top))}
+@media (max-width:600px){
+  .page{padding:16px 12px}
+  .grid{grid-template-columns:1fr}
+  .topbar .btn.small{padding:6px 8px}
+  .lp-hero{padding:44px 16px 32px}
+  .toast{font-size:.95rem}
+  .editor{height:calc(100dvh - 53px)}
+}
+input,select,textarea{font-size:16px} /* stops iOS zooming into fields */

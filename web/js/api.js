@@ -1,5 +1,10 @@
 // Talks to the backend. The login token lives in localStorage; every call sends it as a Bearer header.
 
+// Backend address comes from config.js (window.AUTORESUME_CONFIG.API_BASE). Empty = same origin (backend serves the web app).
+const CFG = (typeof window !== 'undefined' && window.AUTORESUME_CONFIG) || {};
+export const API_BASE = String(CFG.API_BASE || '').trim().replace(/\/+$/, '');
+const API = API_BASE + '/api';
+
 const TOKEN = 'autoresume_token';
 const USER = 'autoresume_user';
 
@@ -23,7 +28,7 @@ async function request(method, path, body, auth = true) {
   let res;
   try {
     const binary = body instanceof Uint8Array; // a PDF file is sent as it is, everything else as JSON
-    res = await fetch('/api' + path, {
+    res = await fetch(API + path, {
       method,
       headers: { 'Content-Type': binary ? 'application/pdf' : 'application/json', ...(auth && session.token ? { Authorization: 'Bearer ' + session.token } : {}) },
       body: body === undefined ? undefined : binary ? body : JSON.stringify(body),
@@ -50,7 +55,7 @@ async function request(method, path, body, auth = true) {
 async function stream(path, body, onText, signal) {
   let res;
   try {
-    res = await fetch('/api' + path, { method: 'POST', signal, headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', Authorization: 'Bearer ' + session.token }, body: JSON.stringify({ ...body, stream: true }) });
+    res = await fetch(API + path, { method: 'POST', signal, headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', Authorization: 'Bearer ' + session.token }, body: JSON.stringify({ ...body, stream: true }) });
   } catch (e) {
     if (e && e.name === 'AbortError') throw e;
     throw new ApiError(0, 'NETWORK', 'Cannot reach the server. Check your internet connection.');

@@ -48,7 +48,6 @@ class ResumeViewModel(private val dao: ResumeDao, private val app: Context) : Vi
     val message = MutableStateFlow<UiMessage?>(null)
     fun say(text: String) { message.value = UiMessage(text) }
 
-    val showOnboarding = MutableStateFlow(!prefs.getBoolean("onboarded", false))
     val language = MutableStateFlow(prefs.getString("language", "en") ?: "en")
 
     // cover letter state
@@ -236,11 +235,6 @@ class ResumeViewModel(private val dao: ResumeDao, private val app: Context) : Vi
                 is SyncOutcome.Ok -> {
                     syncStatus.value = "Last synced " + DateFormat.getTimeInstance(DateFormat.SHORT).format(Date())
                     o.warning?.let { say(it) }
-                    // signing in on a new phone: the resumes are already here, so skip the first-run questions
-                    if (showOnboarding.value && dao.getAllResumes().first().isNotEmpty()) {
-                        prefs.edit().putBoolean("onboarded", true).apply()
-                        showOnboarding.value = false
-                    }
                 }
                 is SyncOutcome.Fail -> when {
                     o.unauthorized -> expireSession()
@@ -678,20 +672,7 @@ class ResumeViewModel(private val dao: ResumeDao, private val app: Context) : Vi
     fun updateDesign(change: (DesignOptions) -> DesignOptions) =
         update { it.copy(fontSize = change(DesignOptions.parse(it)).encode()) }
 
-    // ---------- onboarding / import / backup ----------
-    fun finishOnboarding(name: String, job: String, email: String) {
-        prefs.edit().putBoolean("onboarded", true).apply()
-        showOnboarding.value = false
-        if (name.isBlank() && job.isBlank()) return
-        viewModelScope.launch {
-            val r = Resume(name = "My resume", fullName = name.trim(), jobTitle = job.trim(), email = email.trim())
-                .withTarget(TargetJob(title = job.trim()))
-            val id = dao.insertResume(r).toInt()
-            syncSoon()
-            openGuided(r.copy(id = id))
-        }
-    }
-
+    // ---------- import / backup ----------
     fun importLinkedIn(uri: Uri) {
         viewModelScope.launch {
             val r = withContext(Dispatchers.IO) { LinkedInImport.fromZip(app, uri) }

@@ -4,11 +4,7 @@ import { blankData, newRef, normalize, sampleData } from './model.js';
 import { downloadAndStorePdf, downloadDocx, isStoredPdfUrl } from './pdfActions.js';
 import { renderResumeHtml, webTemplate } from './templates.js';
 import { importLinkedInZip } from './linkedin.js';
-import { encodeTarget } from './shared/resume.js';
 
-const ONBOARDED = 'autoresume_onboarded';
-const seen = () => { try { return localStorage.getItem(ONBOARDED) === '1'; } catch { return true; } };
-const markSeen = () => { try { localStorage.setItem(ONBOARDED, '1'); } catch { /* ignore */ } };
 
 /** A small picture of the first page. */
 function thumbnail(r) {
@@ -40,7 +36,6 @@ export function renderDashboard(root, nav) {
       if (!resumes.length) {
         fill(list, h('div', { class: 'empty card' }, h('h2', {}, 'No resumes yet'), h('p', { class: 'muted' }, 'Create your first resume. It saves automatically.'),
           h('div', { class: 'actions center' }, h('button', { class: 'btn primary', onclick: newResume }, 'Create a resume'), h('button', { class: 'btn', onclick: () => fileInput.click() }, 'Import from LinkedIn'))));
-        if (!seen()) welcome();
         return;
       }
       fill(list, ...resumes.map(cardFor));
@@ -54,23 +49,6 @@ export function renderDashboard(root, nav) {
       const { resume } = await api.createResume({ name, data, clientRef: newRef(), clientUpdatedAt: Date.now() });
       nav(`#/${route}/${resume.id}`);
     } catch (e) { toast(e.message, 'error'); }
-  }
-
-  /** First run: three short questions, then the step-by-step setup. */
-  function welcome() {
-    const name = h('input', { type: 'text', maxlength: 120, value: (user && user.name) || '', autocomplete: 'name' });
-    const job = h('input', { type: 'text', maxlength: 160, placeholder: 'e.g. Marketing Manager' });
-    const email = h('input', { type: 'email', maxlength: 254, value: (user && user.email) || '' });
-    const field = (l, i) => h('label', { class: 'field' }, h('span', {}, l), i);
-    const go = h('button', { class: 'btn primary', type: 'button', onclick: () => withBusy(go, 'Creating...', async () => {
-      markSeen(); m.close();
-      const data = { ...blankData(user), fullName: name.value.trim(), jobTitle: job.value.trim(), email: email.value.trim(), atsFeedback: encodeTarget({ title: job.value.trim(), description: '' }) };
-      await createAndOpen('My resume', data, 'guided');
-    }) }, 'Build my resume');
-    const m = modal('Welcome to AutoResume', h('div', {},
-      h('p', { class: 'muted' }, 'Build a resume, check how well it passes ATS screening, and download a clean A4 PDF. Answer three questions and we will guide you.'),
-      field('Your name', name), field('The job you want', job), field('Email', email),
-      h('div', { class: 'actions' }, go, h('button', { class: 'btn', type: 'button', onclick: () => { markSeen(); m.close(); } }, 'Skip'))), { onClose: markSeen });
   }
 
   function newResume() {

@@ -1,7 +1,8 @@
 import { h, toast, modal, withBusy, fill } from './ui.js';
 import { t, LANGS, getLang, setLang } from './i18n.js';
 import { aiOn, loadAiState } from './aistate.js';
-import { session, api } from './api.js';
+import { session, api, API_BASE } from './api.js';
+import { landingView } from './landing.js';
 import { loginView, registerView, verifyView, forgotView, resetView } from './auth.js';
 import { renderDashboard, deleteAccountFlow } from './dashboard.js';
 import { renderEditor } from './editor.js';
@@ -72,7 +73,10 @@ function render() {
     fill(root, authView(nav));
     return;
   }
-  if (!loggedIn) return nav('#/login');
+  if (!loggedIn) {
+    if (hash === '#/' || hash === '#') { fill(root, landingView()); return; }
+    return nav('#/login');
+  }
 
   const edit = hash.match(/^#\/edit\/([A-Za-z0-9]+)$/);
   const guided = hash.match(/^#\/guided\/([A-Za-z0-9]+)$/);
@@ -91,3 +95,21 @@ window.addEventListener('hashchange', render);
 if (session.token) loadAiState();
 window.addEventListener('auth:expired', () => { toast('Your session expired. Please log in again.', 'error'); nav('#/login'); });
 render();
+
+// If the backend address is wrong or the server is asleep, say so instead of failing silently on login.
+async function checkServer() {
+  document.getElementById('server-banner')?.remove();
+  let ok = false;
+  try {
+    const res = await fetch(API_BASE + '/api/health', { cache: 'no-store' });
+    const j = await res.json();
+    ok = res.ok && j && j.ok === true;
+  } catch { ok = false; }
+  if (ok) return;
+  const where = API_BASE ? 'the server at ' + API_BASE : 'a server. Set API_BASE in config.js';
+  const banner = h('div', { id: 'server-banner', class: 'server-banner', role: 'alert' },
+    h('span', {}, 'Cannot reach ' + where + '. Free servers can take about a minute to wake up.'),
+    h('button', { type: 'button', onclick: checkServer }, 'Retry'));
+  document.body.prepend(banner);
+}
+checkServer();

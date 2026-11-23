@@ -24,8 +24,9 @@ function createCloudinaryService(config, fetchImpl = globalThis.fetch) {
     return crypto.createHash('sha1').update(text + c.apiSecret).digest('hex');
   }
 
+  // One flat folder for every PDF (no per-user sub-folders), so they all land in the same place in the Media Library.
   function newPublicId(userId, resumeId) {
-    return `${c.folder}/${userId}/${resumeId}-${crypto.randomBytes(12).toString('hex')}.pdf`;
+    return `${c.folder}/${userId}-${resumeId}-${crypto.randomBytes(12).toString('hex')}.pdf`;
   }
 
   async function post(path, form) {
@@ -40,21 +41,38 @@ function createCloudinaryService(config, fetchImpl = globalThis.fetch) {
     if (!res.ok) {
       const reason = json && json.error && json.error.message ? String(json.error.message).slice(0, 200) : `HTTP ${res.status}`;
       console.error('[cloudinary]', path, reason);
-      throw new HttpError(502, 'STORAGE_FAILED', 'The PDF could not be saved. Please try again.');
+      const err = new HttpError(502, 'STORAGE_FAILED', 'The PDF could not be saved. Please try again.');
+      err.reason = reason;
+      throw err;
     }
     return json;
   }
 
+  /**
+   * Newer Cloudinary accounts use "dynamic folder mode": the folder you see in the Media Library comes from the
+   * asset_folder field, NOT from the slashes in public_id. Without it files pile up in the root ("Home") or in
+   * odd places. So we send asset_folder too (old "fixed folder" accounts ignore it; if one rejects it we retry without).
+   */
   async function uploadPdf({ buffer, publicId }) {
     if (!enabled) throw new HttpError(503, 'PDF_STORAGE_OFF', 'PDF storage is not set up on this server.');
-    const timestamp = Math.floor(Date.now() / 1000);
-    const form = new FormData();
-    form.append('file', new Blob([buffer], { type: 'application/pdf' }), 'resume.pdf');
-    form.append('api_key', c.apiKey);
-    form.append('timestamp', String(timestamp));
-    form.append('public_id', publicId);
-    form.append('signature', sign({ public_id: publicId, timestamp }));
-    const json = await post('upload', form);
+    const send = (withFolder) => {
+      const timestamp = Math.floor(Date.now() / 1000);
+      const signed = { public_id: publicId, timestamp };
+      if (withFolder) signed.asset_folder = c.folder;
+      const form = new FormData();
+      form.append('file', new Blob([buffer], { type: 'application/pdf' }), 'resume.pdf');
+      form.append('api_key', c.apiKey);
+      for (const [k, v] of Object.entries(signed)) form.append(k, String(v));
+      form.append('signature', sign(signed));
+      return post('upload', form);
+    };
+    let json;
+    try {
+      json = await send(true);
+    } catch (e) {
+      if (e && e.reason && /asset_folder/i.test(e.reason)) json = await send(false);
+      else throw e;
+    }
     const url = String(json.secure_url || '');
     // only ever store a link that really points at Cloudinary over https
     if (!/^https:\/\/res\.cloudinary\.com\//.test(url) || !json.public_id) {

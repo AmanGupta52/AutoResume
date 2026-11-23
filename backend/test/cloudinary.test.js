@@ -26,7 +26,7 @@ test('signature = sha1 of the sorted parameters plus the secret', () => {
 test('public ids are inside the folder, per user and resume, and never repeat', () => {
   const svc = createCloudinaryService(cfg({ CLOUDINARY_FOLDER: 'autoresume' }));
   const a = svc.newPublicId('u1', 'r1');
-  assert.match(a, /^autoresume\/u1\/r1-[0-9a-f]{24}\.pdf$/);
+  assert.match(a, /^autoresume\/u1-r1-[0-9a-f]{24}\.pdf$/); // one flat folder, no per-user sub-folders
   assert.notEqual(a, svc.newPublicId('u1', 'r1'));
 });
 
@@ -41,7 +41,8 @@ test('upload sends a signed form to the raw endpoint and returns the https link'
   assert.equal(call.form.get('api_key'), 'key123');
   assert.equal(call.form.get('public_id'), 'autoresume/u/r.pdf');
   const ts = call.form.get('timestamp');
-  assert.equal(call.form.get('signature'), svc.sign({ public_id: 'autoresume/u/r.pdf', timestamp: ts }));
+  assert.equal(call.form.get('asset_folder'), 'autoresume'); // dynamic-folder accounts file it here
+  assert.equal(call.form.get('signature'), svc.sign({ public_id: 'autoresume/u/r.pdf', timestamp: ts, asset_folder: 'autoresume' }));
   assert.ok(!JSON.stringify([...call.form.keys()]).includes('secret'));
   assert.equal(call.form.get('file').size, fakePdf.length);
   assert.deepEqual(out, { url: 'https://res.cloudinary.com/democloud/raw/upload/v1/autoresume/u/r.pdf', publicId: 'autoresume/u/r.pdf', bytes: 321 });
@@ -71,4 +72,19 @@ test('destroy is signed and asks Cloudinary to invalidate the cached link', asyn
   await svc.destroy('autoresume/u/r.pdf');
   assert.equal(call.url, 'https://api.cloudinary.com/v1_1/democloud/raw/destroy');
   assert.equal(call.form.get('signature'), svc.sign({ public_id: 'autoresume/u/r.pdf', timestamp: call.form.get('timestamp'), invalidate: 'true' }));
+});
+
+test('an account that rejects asset_folder gets one retry without it', async () => {
+  const forms = [];
+  const svc = createCloudinaryService(cfg(), async (url, init) => {
+    forms.push(init.body);
+    if (forms.length === 1) return { ok: false, status: 400, json: async () => ({ error: { message: 'Invalid parameter asset_folder' } }) };
+    return { ok: true, json: async () => ({ secure_url: 'https://res.cloudinary.com/democloud/raw/upload/v1/autoresume/u/r.pdf', public_id: 'autoresume/u/r.pdf', bytes: 5 }) };
+  });
+  const orig = console.error; console.error = () => {};
+  const out = await svc.uploadPdf({ buffer: fakePdf, publicId: 'autoresume/u/r.pdf' });
+  console.error = orig;
+  assert.equal(forms.length, 2);
+  assert.equal(forms[1].get('asset_folder'), null);
+  assert.equal(out.publicId, 'autoresume/u/r.pdf');
 });

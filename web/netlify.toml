@@ -1,0 +1,4 @@
+# Drag-and-drop deploy ignores this file. It only matters if you connect a Git repo.
+[build]
+  publish = "."
+  command = "node scripts/generate-config.mjs"
