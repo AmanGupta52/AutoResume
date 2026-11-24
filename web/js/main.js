@@ -8,9 +8,8 @@ import { renderDashboard, deleteAccountFlow } from './dashboard.js';
 import { renderEditor } from './editor.js';
 import { renderGuided } from './guided.js';
 
-const THEME = 'autoresume_theme';
-const applyTheme = (v) => { if (v === 'light' || v === 'dark') document.documentElement.dataset.theme = v; else delete document.documentElement.dataset.theme; };
-try { applyTheme(localStorage.getItem(THEME) || 'system'); } catch { /* ignore */ }
+// Theme (system / light / dark / OLED black) is handled by /theme.js, which runs before first paint.
+const TH = window.AutoResumeTheme;
 
 const root = document.getElementById('app');
 let leave = () => {};
@@ -28,16 +27,28 @@ function shell(content) {
       h('a', { href: '#/resumes', class: 'brand' }, 'AutoResume'),
       h('span', { class: 'spacer' }),
       h('span', { class: 'muted small user' }, user ? user.name : ''),
+      themeToggle(),
       h('button', { class: 'btn small', onclick: openSettings }, 'Settings'),
       h('button', { class: 'btn small', onclick: logout }, 'Log out')),
     content);
 }
 
+/** Quick theme button in the top bar: cycles System, Light, Dark, OLED black. */
+function themeToggle() {
+  if (!TH) return null;
+  const b = h('button', { class: 'btn small', type: 'button' });
+  const sync = () => { b.textContent = TH.glyph(); b.title = TH.label(); b.setAttribute('aria-label', TH.label()); };
+  b.addEventListener('click', () => { TH.cycle(); sync(); });
+  sync();
+  return b;
+}
+
 function openSettings() {
   const user = session.user;
   const lang = h('div', { class: 'seg' }, LANGS.map(([c, name]) => h('button', { type: 'button', class: 'btn small' + (getLang() === c ? ' primary' : ''), 'aria-pressed': String(getLang() === c), onclick: () => { setLang(c); m.close(); render(); openSettings(); } }, name)));
-  const theme = h('select', {}, [['system', 'System'], ['light', 'Light'], ['dark', 'Dark']].map(([v, name]) => h('option', { value: v, selected: (localStorage.getItem(THEME) || 'system') === v }, name)));
-  theme.addEventListener('change', () => { try { localStorage.setItem(THEME, theme.value); } catch { /* ignore */ } applyTheme(theme.value); });
+  const themeOptions = TH ? TH.options : [['system', 'System'], ['light', 'Light'], ['dark', 'Dark']];
+  const theme = h('select', {}, themeOptions.map(([v, name]) => h('option', { value: v, selected: (TH ? TH.get() : 'system') === v }, name)));
+  theme.addEventListener('change', () => { if (TH) TH.set(theme.value); });
   const aiText = h('p', { class: 'muted', role: 'status' }, 'Checking...');
   const test = h('button', { class: 'btn', type: 'button', hidden: true, onclick: () => withBusy(test, 'Testing...', async () => {
     try { const r = await api.aiTest(); toast(`AI works (${r.ms} ms).`); } catch (e) { toast(e.message + (e.data && e.data.detail ? ` (${e.data.detail})` : ''), 'error'); }

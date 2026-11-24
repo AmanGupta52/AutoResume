@@ -21,7 +21,8 @@ fun SettingsScreen(vm: ResumeViewModel) {
         SoftCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("Appearance", style = MaterialTheme.typography.titleMedium)
-                val options = listOf("system" to "System", "light" to "Light", "dark" to "Dark")
+                Text("OLED uses pure black to save battery on OLED screens.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                val options = listOf("system" to "System", "light" to "Light", "dark" to "Dark", "oled" to "OLED")
                 SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                     options.forEachIndexed { i, (id, label) ->
                         SegmentedButton(

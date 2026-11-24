@@ -12,5 +12,9 @@
   Cache-Control: no-cache
 /styles.css
   Cache-Control: no-cache
+/landing.css
+  Cache-Control: no-cache
+/theme.js
+  Cache-Control: no-cache
 /icons/*
   Cache-Control: public, max-age=31536000, immutable

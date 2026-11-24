@@ -11,7 +11,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import com.example.ui.theme.LocalGlass
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -26,23 +31,40 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 
-/** Card with a soft, wide shadow. Always uses theme surface + onSurface so text stays readable. */
+/**
+ * Glass card (Glassmorphism 2.0 / Liquid Glass): translucent fill over the aurora, a light sheen, a specular edge and a
+ * soft shadow that only shows outside the card. A clickable card lights up with an iridescent edge while pressed.
+ * Always uses theme onSurface for content so text stays readable.
+ */
 @Composable
 fun SoftCard(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val shape = RoundedCornerShape(22.dp)
-    val shadowed = modifier.shadow(6.dp, shape, ambientColor = Color(0x261E293B), spotColor = Color(0x331E293B))
+    val g = LocalGlass.current
+    val corner = 24.dp
+    val shape = RoundedCornerShape(corner)
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val edge = if (pressed) holoEdge() else glassEdge()
+    val sheen = glassSheen()
+    val glass = modifier
+        .softShadow(corner, g.shadow)
+        .clip(shape)
+        .background(g.fill)
+        .background(sheen)
     if (onClick != null) {
-        Surface(onClick = onClick, modifier = shadowed, shape = shape, color = MaterialTheme.colorScheme.surface, contentColor = MaterialTheme.colorScheme.onSurface) {
-            Column(content = content)
-        }
+        Surface(
+            onClick = onClick, modifier = glass, shape = shape, color = Color.Transparent,
+            contentColor = MaterialTheme.colorScheme.onSurface, border = BorderStroke(if (pressed) 1.5.dp else 1.dp, edge),
+            interactionSource = interaction,
+        ) { Column(content = content) }
     } else {
-        Surface(modifier = shadowed, shape = shape, color = MaterialTheme.colorScheme.surface, contentColor = MaterialTheme.colorScheme.onSurface) {
-            Column(content = content)
-        }
+        Surface(
+            modifier = glass, shape = shape, color = Color.Transparent,
+            contentColor = MaterialTheme.colorScheme.onSurface, border = BorderStroke(1.dp, edge),
+        ) { Column(content = content) }
     }
 }
 
@@ -70,9 +92,10 @@ fun Field(
         ),
         shape = RoundedCornerShape(14.dp),
         colors = OutlinedTextFieldDefaults.colors(
-            focusedContainerColor = MaterialTheme.colorScheme.surface,
-            unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-            unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+            focusedContainerColor = LocalGlass.current.field,
+            unfocusedContainerColor = LocalGlass.current.field,
+            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+            focusedBorderColor = MaterialTheme.colorScheme.primary,
         ),
         modifier = modifier.fillMaxWidth(),
     )
